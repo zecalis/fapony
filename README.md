@@ -4,12 +4,12 @@
 
 # fapony
 
-[![npm](https://img.shields.io/npm/v/fapony.svg)](https://www.npmjs.com/package/fapony) [![GitHub](https://img.shields.io/github/stars/inonix-dev/fapony.svg)](https://github.com/inonix-dev/fapony)
+[![npm](https://img.shields.io/npm/v/fapony.svg)](https://www.npmjs.com/package/fapony) [![GitHub](https://img.shields.io/github/stars/zecalis/fapony.svg)](https://github.com/zecalis/fapony)
 
 **The dev workflow for writing code with agents** — plans cut into one-session chunks, lookups
 that cost a fraction of reading the files, convention debt you can count, and what it all cost in
 tokens. It is one developer's daily flow made into commands; adopting fapony means adopting that
-flow. Memory — decisions, bugs, notes — is [fael](https://github.com/inonix-dev/fael)'s, never
+flow. Memory — decisions, bugs, notes — is [fael](https://github.com/zecalis/fael)'s, never
 fapony's.
 
 Why chunks: a long plan run in one unbroken session only accumulates context. Every chunk here is
@@ -18,7 +18,7 @@ its own session that opens with just the facts it needs and stops when the chunk
 ## The workflow — fapony + fael
 
 Two tools, one loop, no overlap. **fapony is the workflow** — plans cut into chunks, convention
-debt, cheap lookups, what it all cost. **[fael](https://github.com/inonix-dev/fael) is the memory** — the
+debt, cheap lookups, what it all cost. **[fael](https://github.com/zecalis/fael) is the memory** — the
 decisions, bugs and notes the next session must see. Each is useful alone; together they close
 the loop: fapony says *what's next*, fael says *what the last session learned*.
 
@@ -27,7 +27,7 @@ the loop: fapony says *what's next*, fael says *what the last session learned*.
 | Owns | plans + chunk loop, `debt`, `lint-baseline`, `review-seed` / `analyze`, usage | decisions, issues, notes (`add` / `find` / `close`) |
 | Agent surface | plan-mv guard hook, skills — **no MCP server** | MCP tools + SessionStart / read / Stop hooks |
 | Writes | plan files, only when told (`plan sweep --apply`) | its log under `.fael/` in your repo |
-| Install | `npm i -g fapony && fapony install` | `npm i -g @inonix/fael && fael install` |
+| Install | `npm i -g fapony && fapony install` | `npm i -g @zecalis/fael && fael install` |
 
 One chunk, one session:
 
@@ -119,7 +119,7 @@ self-graded.
 # 1. Install (needs Bun — https://bun.sh)
 npm install -g fapony
 #    from source instead:
-#    git clone https://github.com/inonix-dev/fapony.git && cd fapony && bun install && bun link
+#    git clone https://github.com/zecalis/fapony.git && cd fapony && bun install && bun link
 #    (`bun link` claims the global `fapony` bin by package name, not path — re-run it in the
 #    checkout you want to be the one)
 
@@ -143,7 +143,7 @@ fapony init /path/to/your-worktree
 #    (none yet = AGENTS.md + a CLAUDE.md that imports it)
 fapony init /path/to/your-worktree --rules --yes   # repo already set up: rules only, no prompt
 
-# 5. Memory: install fael (npm i -g @inonix/fael && fael install)
+# 5. Memory: install fael (npm i -g @zecalis/fael && fael install)
 ```
 
 ## What fapony is not
@@ -202,7 +202,7 @@ expects, so a client can symlink the directory rather than copy the file:
 
 `plan-with-pony` is vendor-neutral — the SKILL.md *is* the prompt, so pipe it to any agent:
 `cat skill/plan-with-pony/SKILL.md | claude -p` (or `opencode run`, or anything that reads stdin).
-Example plans it produced: [examples/](https://github.com/inonix-dev/fapony/tree/main/examples).
+Example plans it produced: [examples/](https://github.com/zecalis/fapony/tree/main/examples).
 
 ### Plans your agent can answer questions about
 
@@ -280,7 +280,7 @@ capped at 180s — a command that doesn't fit reports as `timeout`, never as a p
 ## Config
 
 `fapony.config.json` lives in the fapony checkout and is gitignored (it's per-machine). Copy
-[fapony.config.example.json](https://github.com/inonix-dev/fapony/blob/main/fapony.config.example.json)
+[fapony.config.example.json](https://github.com/zecalis/fapony/blob/main/fapony.config.example.json)
 for a complete working reference; every section is optional. Key fields: `worktrees`
 (name → path), `memory` (shell commands the frozen ledger runs; off unless set), `paths` / `safety`,
 `usageWeb { port, hostname }`. Env overrides: `FAPONY_CONFIG`, `FAPONY_STATE_DIR` (state DB;
@@ -291,11 +291,11 @@ default `~/.config/fapony/`).
 **Supported:** cross-client usage on one yardstick · per-project plans + convention debt ·
 per-client hooks ([matrix above](#what-runs-where)) ·
 vendor-neutral skills (anything that reads stdin) · opt-in telemetry, off by default
-([TELEMETRY.md](https://github.com/inonix-dev/fapony/blob/main/TELEMETRY.md) lists exactly what
+([TELEMETRY.md](https://github.com/zecalis/fapony/blob/main/TELEMETRY.md) lists exactly what
 leaves the machine) · Bun-only; run state in SQLite via `bun:sqlite` (WAL mode).
 
 **Not supported (yet):** the plan-mv guard outside Claude Code. Memory of any
-kind — that is [fael](https://github.com/inonix-dev/fael). A hosted or shared ledger —
+kind — that is [fael](https://github.com/zecalis/fael). A hosted or shared ledger —
 `FAPONY_STATE_DIR` on a synced folder works as an experiment only; SQLite's WAL mode does not
 tolerate concurrent writers over NFS/Dropbox/iCloud Drive and can corrupt the db under real
 contention.

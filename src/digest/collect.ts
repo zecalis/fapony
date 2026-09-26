@@ -535,7 +535,7 @@ export async function collectDigest(
     ok: mem.ok,
     detail: mem.ok
       ? `${mem.rows.length} rows from fael`
-      : "fael not found — memory lives in fael (npm i -g @inonix/fael)",
+      : "fael not found — memory lives in fael (npm i -g @zecalis/fael)",
   });
 
   // 2. plans

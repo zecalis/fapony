@@ -155,7 +155,7 @@ export async function cmdUpdate(deps: UpdateDeps = {}): Promise<void> {
   if (isRepo !== "true") {
     console.error(`❌ ${ROOT} is not a git repo — cannot self-update.`);
     console.error(
-      "   Reinstall via: git clone https://github.com/inonix-dev/fapony.git",
+      "   Reinstall via: git clone https://github.com/zecalis/fapony.git",
     );
     exitFn(1);
   }

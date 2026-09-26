@@ -52,7 +52,7 @@ export async function cliMain(): Promise<void> {
   } else if (cmd === "mem" || cmd === "mcp" || cmd === "init-mem") {
     // Memory moved to fael (2026-09-25) — say where, don't just "unknown".
     console.error(
-      `fapony: memory moved to fael (npm i -g @inonix/fael) — "fapony mem <sub>" → "fael <sub>", plans → "fapony plan [sweep|check]"`,
+      `fapony: memory moved to fael (npm i -g @zecalis/fael) — "fapony mem <sub>" → "fael <sub>", plans → "fapony plan [sweep|check]"`,
     );
     process.exit(1);
   } else if (cmd === "init") {
