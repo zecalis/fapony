@@ -12,6 +12,7 @@ cl-*/
 fapony.config.json
 scripts/*
 !scripts/smoke-publish.sh
+!scripts/release.sh
 !scripts/test-one.ts
 !scripts/codemod-bun-test.ts
 
