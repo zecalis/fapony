@@ -54,6 +54,10 @@ git push -q origin main --follow-tags
 
 echo "v$old -> v$new pushed."
 
+# owner's machine: park every fapony worktree on the new main (alias fapony-sync); skipped where sync.sh is absent
+# a worktree that can't fast-forward is not a release failure — report it and keep going
+[ -f ../sync.sh ] && { bash ../sync.sh || echo "release: fapony-sync had failures (above) — continuing" >&2; }
+
 # wait for the tag's publish.yml, then move this machine's global install onto it
 run=
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
@@ -72,5 +76,5 @@ for _ in $(seq 30); do
 done
 
 # fapony runs on bun, so bun holds the global install
-bun add -g "$pkg@$new" >/dev/null || { echo "release: bun add -g $pkg@$new failed" >&2; exit 1; }
-echo "local fapony -> $new (bun)"
+bun add -g "$pkg@$new" >/dev/null && echo "local fapony -> $new ($(fapony --version))" \
+  || echo "release: npm has no $new after 5 min — run: bun add -g $pkg@$new" >&2
