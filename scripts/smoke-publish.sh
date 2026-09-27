@@ -15,7 +15,10 @@ set -euo pipefail
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 
-npm pack --silent --pack-destination "$dir" >/dev/null
+# NOTE: strip npm_config_dry_run — under `npm publish --dry-run` npm exports it
+# to lifecycle scripts, and the nested `npm pack` below would inherit it and
+# produce no tarball. The rehearsal must pack for real.
+env -u npm_config_dry_run npm pack --silent --pack-destination "$dir" >/dev/null
 tgz=$(ls "$dir"/*.tgz)
 tar xzf "$tgz" -C "$dir"
 

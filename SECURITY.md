@@ -6,7 +6,7 @@ If you discover a security vulnerability in fapony, please report it responsibly
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, use GitHub's private vulnerability reporting: [Report a vulnerability](https://github.com/inonix-dev/fapony/security/advisories/new).
+Instead, use GitHub's private vulnerability reporting: [Report a vulnerability](https://github.com/zecalis/fapony/security/advisories/new).
 
 ## Scope
 
