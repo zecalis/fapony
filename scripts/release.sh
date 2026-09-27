@@ -71,19 +71,5 @@ for _ in $(seq 30); do
   sleep 10
 done
 
-# npm, pnpm and bun all live on this machine — update whichever one(s) hold the global install
-updated=
-if command -v bun >/dev/null 2>&1 && bun pm ls -g 2>/dev/null | grep -q "$pkg@"; then
-  bun add -g "$pkg@$new" >/dev/null && updated="$updated bun"
-fi
-if command -v pnpm >/dev/null 2>&1 && pnpm ls -g --depth 0 2>/dev/null | grep -q "$pkg "; then
-  pnpm add -g "$pkg@$new" >/dev/null && updated="$updated pnpm"
-fi
-if npm ls -g "$pkg" >/dev/null 2>&1; then
-  npm i -g "$pkg@$new" >/dev/null && updated="$updated npm"
-fi
-if [ -n "$updated" ]; then
-  echo "local fapony -> $new ($(echo $updated))"
-else
-  echo "release: no global $pkg updated — install: bun add -g $pkg@$new" >&2
-fi
+npm i -g "$pkg@$new" >/dev/null || { echo "release: npm i -g $pkg@$new failed" >&2; exit 1; }
+echo "local fapony -> $new (npm)"
