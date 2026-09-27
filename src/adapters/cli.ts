@@ -19,7 +19,7 @@ import { cmdReviewSeed } from "../seed/review-seed.js";
 import { cmdSetup } from "../setup.js";
 import { cmdStats } from "../stats/index.js";
 import { cmdTelemetry } from "../telemetry.js";
-import { cmdUpdate } from "../update.js";
+import { cmdUpdate, readVersion } from "../update.js";
 import { cmdUsageScan, cmdUsageWeb } from "../usage/index.js";
 import { cmdHookMvGuard } from "./hooks/index.js";
 
@@ -28,6 +28,11 @@ export async function cliMain(): Promise<void> {
 
   if (!cmd || cmd === "--help" || cmd === "-h") {
     console.log(renderUsage());
+    return;
+  }
+
+  if (cmd === "--version" || cmd === "-v") {
+    console.log(readVersion());
     return;
   }
 
