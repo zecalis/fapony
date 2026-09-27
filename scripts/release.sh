@@ -71,5 +71,6 @@ for _ in $(seq 30); do
   sleep 10
 done
 
-npm i -g "$pkg@$new" >/dev/null || { echo "release: npm i -g $pkg@$new failed" >&2; exit 1; }
-echo "local fapony -> $new (npm)"
+# fapony runs on bun, so bun holds the global install
+bun add -g "$pkg@$new" >/dev/null || { echo "release: bun add -g $pkg@$new failed" >&2; exit 1; }
+echo "local fapony -> $new (bun)"
