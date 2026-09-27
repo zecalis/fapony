@@ -27,7 +27,7 @@ the loop: fapony says *what's next*, fael says *what the last session learned*.
 | Owns | plans + chunk loop, `debt`, `lint-baseline`, `review-seed` / `analyze`, usage | decisions, issues, notes (`add` / `find` / `close`) |
 | Agent surface | plan-mv guard hook, skills — **no MCP server** | MCP tools + SessionStart / read / Stop hooks |
 | Writes | plan files, only when told (`plan sweep --apply`) | its log under `.fael/` in your repo |
-| Install | `npm i -g fapony && fapony install` | `npm i -g @zecalis/fael && fael install` |
+| Install | `npm i -g @zecalis/fapony && fapony install` | `npm i -g @zecalis/fael && fael install` |
 
 One chunk, one session:
 
@@ -89,7 +89,7 @@ instrument: it runs on the history already sitting on your disk.
 </p>
 
 ```bash
-npm install -g fapony       # needs Bun — https://bun.sh
+npm install -g @zecalis/fapony       # needs Bun — https://bun.sh
 fapony usage-scan           # read the session logs already on your disk
 fapony price-scan           # fetch the price table (needed once, for cost)
 fapony usage-web            # every session you already have, all clients, one page
@@ -117,7 +117,7 @@ self-graded.
 
 ```bash
 # 1. Install (needs Bun — https://bun.sh)
-npm install -g fapony
+npm install -g @zecalis/fapony
 #    from source instead:
 #    git clone https://github.com/zecalis/fapony.git && cd fapony && bun install && bun link
 #    (`bun link` claims the global `fapony` bin by package name, not path — re-run it in the

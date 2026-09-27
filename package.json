@@ -1,5 +1,5 @@
 {
-  "name": "fapony",
+  "name": "@zecalis/fapony",
   "version": "0.7.1",
   "description": "Token usage across Claude Code, OpenCode, Codex & ZCode on one yardstick — plus plans run chunk by chunk and a convention-debt tracker. No server, your data stays local",
   "license": "MIT",
