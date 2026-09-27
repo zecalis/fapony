@@ -4,7 +4,7 @@
 
 # fapony
 
-[![npm](https://img.shields.io/npm/v/fapony.svg)](https://www.npmjs.com/package/fapony) [![GitHub](https://img.shields.io/github/stars/zecalis/fapony.svg)](https://github.com/zecalis/fapony)
+[![npm](https://img.shields.io/npm/v/@zecalis%2Ffapony.svg)](https://www.npmjs.com/package/@zecalis/fapony) [![GitHub](https://img.shields.io/github/stars/zecalis/fapony.svg)](https://github.com/zecalis/fapony)
 
 **The dev workflow for writing code with agents** — plans cut into one-session chunks, lookups
 that cost a fraction of reading the files, convention debt you can count, and what it all cost in
