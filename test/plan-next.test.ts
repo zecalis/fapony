@@ -243,3 +243,60 @@ test("testPlanShowsNextChunkRowsFirst", () => {
     }),
   );
 });
+
+test("testPlanNextChunkLeadsWhenTheLabelIsBold", () => {
+  withFakeFael((setRows) =>
+    withTempRepo((dir) => {
+      const p = join(dir, ".fapony", "plan");
+      mkdirSync(p, { recursive: true });
+      writeFileSync(
+        join(p, "PLAN-x.md"),
+        plan("X", "", "- [x] **chunk 1** — done\n- [ ] **chunk 2** — next"),
+      );
+      setRows([
+        {
+          id: "new",
+          ts: "2026-09-26T00:00:00Z",
+          kind: "note",
+          text: "newest, no chunk",
+          files: ["plan:x"],
+        },
+        {
+          id: "hand",
+          ts: "2026-09-24T00:00:00Z",
+          kind: "note",
+          text: "chunk 2 must know Y",
+          files: ["src/a.ts", "plan:x"],
+          key: "plan:x:chunk-2",
+        },
+      ]);
+      const out = run(dir, ["PLAN-x"]);
+      assert.ok(out.indexOf("[hand]") < out.indexOf("[new]"), out);
+    }),
+  );
+});
+
+test("testPlanOverflowNamesAnchorAndKeyCalls", () => {
+  withFakeFael((setRows) =>
+    withTempRepo((dir) => {
+      const p = join(dir, ".fapony", "plan");
+      mkdirSync(p, { recursive: true });
+      writeFileSync(join(p, "PLAN-x.md"), plan("X", "", "- [ ] chunk 1 — go"));
+      setRows(
+        [1, 2, 3, 4, 5, 6].map((i) => ({
+          id: `r${i}`,
+          ts: `2026-09-2${i}T00:00:00Z`,
+          kind: "note",
+          text: `row ${i}`,
+          files: ["src/a.ts"],
+          key: `plan:x:chunk-${i}`,
+        })),
+      );
+      const out = run(dir, ["PLAN-x"]);
+      assert.match(
+        out,
+        /… \+1 more — fael find --files plan:x · fael find --key 'plan:x:\*'/,
+      );
+    }),
+  );
+});
