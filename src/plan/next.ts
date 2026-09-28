@@ -70,9 +70,11 @@ const closureHint = (checked: string[]): string | null => {
   return null;
 };
 
-/** "chunk 2 — …" → "2"; the label a `plan:<name>:chunk-<n>` key carries. */
+/** "chunk 2 — …" / "**chunk 2** — …" / "chunk-2" → "2"; the number a
+ *  `plan:<name>:chunk-<n>` key carries. Digits only, so markdown around the
+ *  label (`**`, `_`) never leaks into the key. */
 const chunkLabel = (item: string): string | null =>
-  /chunk\s+([^\s—–-]+)/i.exec(item)?.[1].toLowerCase() ?? null;
+  /\bchunk[\s-]*(\d+)/i.exec(item)?.[1] ?? null;
 
 const readPlanTitle = (planPath: string): string => {
   try {
@@ -137,7 +139,13 @@ function showPlan(file: string): void {
       );
     if (rows.length > HANDOFF_LIMIT)
       console.log(
-        `… +${rows.length - HANDOFF_LIMIT} more — fael find --files ${name ? `plan:${name}` : rel(file)}`,
+        // --files plan:<name> misses rows carrying only the chunk key on a
+        // code file, so an anchored plan names both calls
+        `… +${rows.length - HANDOFF_LIMIT} more — ${
+          name
+            ? `fael find --files plan:${name} · fael find --key 'plan:${name}:*'`
+            : `fael find --files ${rel(file)}`
+        }`,
       );
   }
 }
