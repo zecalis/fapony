@@ -7,8 +7,8 @@ description: Ship a branch end to end — push it, open a PR with an AI-drafted 
 
 You are shipping a branch: push it, open a PR with a drafted title/body, merge it, put the
 branch back in line with the base.
-Commits should already be split by concern — see [git-commit-conventional](../git-commit-conventional/SKILL.md)
-if they aren't yet.
+Commits are one conventional line per finished step — see [git-commit-conventional](../git-commit-conventional/SKILL.md).
+Never re-split them by concern here; one concern per **PR** is the boundary.
 
 ## Where to stop
 
@@ -52,21 +52,15 @@ review may have added some.
   Name the agent you actually are — Claude Code, Codex, opencode, ZCode — not a hardcoded one.
   If your harness already gave you an exact attribution line to use, use that verbatim instead;
   it wins over this template.
-- **Merge method**: default to a regular merge (`--merge`). Squash only when the branch is
-  throwaway *and* its commits are noise — `wip`, `fix typo`, `try again`. Two reasons the
-  default runs this way:
-  - **Squash throws away the split.** If the commits are already one concern each, squashing
-    collapses them into a single commit on the base, and `git blame` then answers every line
-    with a message about the whole branch. The work of splitting them is undone at merge time,
-    every time.
-  - **Squash puts a step you can forget in the critical path.** It writes a *new* commit on the
-    base, so the branch's own commits are never ancestors of it — the two diverge, and every
-    later PR opens with a conflict nobody caused. A regular merge carries the commits over as
-    they are, so there is nothing to remember.
+- **Merge method**: default to `--squash` on a short-lived feature branch. The PR title
+  becomes the subject; with the repo's squash body set to `COMMIT_MESSAGES`, the step commits
+  land under it as the changelog — one commit per PR, linear history, one-command revert.
+  Check what the repo allows first (`gh api repos/{owner}/{repo} --jq
+  '{allow_merge_commit,allow_squash_merge}'`) — a squash-only repo rejects `--merge`.
 
-  A long-lived branch (`dev`, `develop`) that someone keeps checked out is the strongest case
-  for `--merge`: it is exactly where a forgotten realign hurts, and it never gets deleted, so
-  the divergence compounds.
+  Use `--merge` only for a long-lived branch (`dev`, `develop`) that someone keeps checked out
+  and the repo allows merge commits: squash would make it diverge from the base every ship
+  (see the post-merge `reset --hard` below), and that divergence compounds.
 
 ## Confirm once, then run
 
@@ -81,7 +75,7 @@ git status --porcelain   # re-check right before pushing, not just at the start 
                           # don't push around it and don't commit someone else's changes yourself.
 git push -u origin <branch>
 gh pr create --title "<title>" --body "<body>"
-gh pr merge --merge   # or --squash, per the chosen method
+gh pr merge --squash   # or --merge for a long-lived branch, per the chosen method
 
 # post-merge, after --merge: the branch is already an ancestor of the base, so just
 # catch it up. No force, nothing to destroy.
@@ -100,15 +94,15 @@ git -C <primary-checkout> pull --ff-only
 ```
 
 Either way the branch must end up pointing at the merged base — that is what keeps the next PR
-clean. How much work that takes is decided by the merge method, which is the practical reason the
-default is `--merge`: it is a fast-forward, no force, nothing that can go wrong if you get
-distracted.
+clean. After `--merge` it is a fast-forward, no force.
 
-After a squash it is a `reset --hard`, and it is **not optional**. Squashing rewrites the commits,
-so the branch keeps originals the base will never have — the two diverge a little more every ship,
-and GitHub answers every later PR with *"Can't automatically merge"* even when the content is
-identical. Skip it only for a throwaway feature branch you're about to delete. It force-pushes, so
-say so — and check `git status --porcelain` is clean first (uncommitted work would be destroyed).
+After a squash it is a `reset --hard`, and it is **not optional** for a branch you keep. Squashing
+rewrites the commits, so the branch keeps originals the base will never have — the two diverge a
+little more every ship, and GitHub answers every later PR with *"Can't automatically merge"* even
+when the content is identical. A feature branch the host auto-deletes needs none of this: start the
+next task from fresh `origin/<default-branch>` and `git branch -D` the old one. The reset
+force-pushes, so say so — and check `git status --porcelain` is clean first (uncommitted work
+would be destroyed).
 
 Verify before claiming either is done: `git merge-base --is-ancestor origin/<branch>
 origin/<default-branch>` exits 0 when the branch holds nothing the base lacks.
