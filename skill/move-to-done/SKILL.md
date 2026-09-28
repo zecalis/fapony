@@ -66,7 +66,7 @@ You are about to move a PLAN that has been shipped to the archive.
    a spec that never moves is a link that never breaks. Nothing to do here; there is no
    `spec/done/`.
 
-4. **Commit split by concern** (only when the moved files are actually tracked by git):
+4. **Commit** (only when the moved files are actually tracked by git):
    ```
    chore(plan): archive PLAN-foo.md (shipped <hash>)
    ```

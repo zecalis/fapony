@@ -197,7 +197,7 @@ expects, so a client can symlink the directory rather than copy the file:
 | `skill/lookup-before-edit/` | Look up unfamiliar files (`review-seed --files` + fael + debt) before reading/editing them | `/lookup-before-edit` |
 | `skill/define-convention/` | Turn a not-yet-migrated pattern into a tracked convention (interview + dry-run `debt`) | `/define-convention` |
 | `skill/move-to-done/` | Archive a shipped PLAN into .fapony/done/ | `/move-to-done` |
-| `skill/git-commit-conventional/` | Commit split by concern + conventional message | `/git-commit` |
+| `skill/git-commit-conventional/` | Commit per finished step + conventional message | `/git-commit` |
 | `skill/git-ship/` | Push branch, open PR with drafted title/body, merge, reset branch onto base | `/ship`, `/pr` |
 
 `plan-with-pony` is vendor-neutral — the SKILL.md *is* the prompt, so pipe it to any agent:

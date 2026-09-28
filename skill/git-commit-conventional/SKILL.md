@@ -1,18 +1,21 @@
 ---
 name: git-commit-conventional
-description: Commit split by concern with conventional message — use with Claude Code / OpenCode / Codex / ZCode. Trigger on /git-commit and when the user asks to commit changes.
+description: Commit at each finished step with a conventional message — use with Claude Code / OpenCode / Codex / ZCode. Trigger on /git-commit and when the user asks to commit changes.
 ---
 
-# Git Commit Conventional — split by concern
+# Git Commit Conventional — one commit per finished step
 
-**Hard rule: 1 commit per concern.** Never bundle unrelated changes.
+**Hard rule: commit when a step is done, while you still know what it was.** One conventional
+line per step. Never take a dirty tree and split it by concern after the fact — that means
+re-reading the whole diff to rediscover work you just did, and it spends tokens on a split the
+squash merge folds away anyway.
 
-Splitting is not only for the reader: a repo whose commits each carry one concern is the
-only kind whose history can be mined for convention migrations (a commit that deletes
-`A(` and adds `B(` is evidence that `B` replaced `A`). Measured on a real repo
-2026-09-18: restricting the mine to commits touching 10+ files erased every real
-convention it had found, and loosening the matcher to compensate produced only noise.
-Bundled commits destroy that signal permanently — history cannot be re-split later.
+The branch is squash-merged: the PR title becomes the subject on the base, and the squash body
+lists these step commits (`squash_merge_commit_message=COMMIT_MESSAGES`). So the step lines are
+the base branch's changelog — keep each one short and true. The concern boundary that matters
+is the **PR**: one concern per branch, so each commit on the base still carries one concern
+(what history-mining for convention migrations needs). Unrelated work → its own branch, not a
+split commit.
 
 ## Before commit
 
@@ -21,39 +24,32 @@ Bundled commits destroy that signal permanently — history cannot be re-split l
    STOP and report only if a file changes between two consecutive `git status` calls (someone is
    writing right now — wait for it to settle), or if content matches nothing in this
    conversation and doesn't look like a coherent feature.
-2. `git diff --stat HEAD` — see what changed
-3. Split by type — `feat` `fix` `refactor` `docs` `chore` `test` — one commit each.
-   `git add -p` is unavailable here (interactive flags unsupported), so split at file
-   granularity. If one file mixes your work with someone else's, put it with the concern it
-   mostly belongs to and say so in the body — don't force a line-level split you can't do safely.
+2. Stage the files of the step you just finished — by name, not `git add -A`, so another
+   session's dirty files stay out. A one-concern task can be one commit at the end.
 
 ## Format
 
 ```
 <type>(<scope>): <subject, max 72 chars>
 
-<body — what changed and why, wrapped at 76>
-
-Ref <PLAN-file, if any>
+<optional body — why, when the subject can't carry it, wrapped at 76>
 
 Co-Authored-By: <the model you are running as> <its vendor's noreply address>
 ```
 
+`<type>` is exactly one of `feat` `fix` `refactor` `docs` `chore` `test` — no `feat/fix:`, no
+two-word types. The body is optional: the step line is what lands in the squash body.
+
 If your harness already gave you an exact `Co-Authored-By` line, use that verbatim — it wins over
 this template. Otherwise name the model you actually are; never copy another vendor's address.
-
-`<type>` is exactly one of the six words above — no `feat/fix:`, no two-word types.
 
 ### Example
 
 ```
 feat(analyze): structural health diagnosis
 
-Reports hub / orphan / cycle / changed-untested files from an import
-graph built live with Bun.Transpiler.scan(). Nothing persisted: 114
-files scan in 16.6ms, so a cache table would be pure debt.
-
-Ref PLAN-analyze.md
+Import graph built live with Bun.Transpiler.scan(); 114 files scan in
+16.6ms, so no cache table.
 ```
 
 ## Rules

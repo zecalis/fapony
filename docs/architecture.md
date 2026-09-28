@@ -22,7 +22,7 @@ fapony/
     lookup-before-edit/         # lookup unfamiliar files (review-seed --files) before reading/editing them
     define-convention/            # turn a not-yet-migrated pattern into a tracked convention (interview + dry-run debt)
     move-to-done/               # archive PLAN เข้า .fapony/done/ หลัง ship
-    git-commit-conventional/    # commit แยก concern + conventional message
+    git-commit-conventional/    # commit ทีละขั้นที่จบ + conventional message
     git-ship/                   # push branch, open PR, merge, reset branch onto base
   templates/
     PLAN.md / SPEC.md              # plan+spec templates for `fapony init`
