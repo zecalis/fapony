@@ -164,6 +164,7 @@ export interface FaelFixtureRow {
   by?: string;
   files?: string[];
   spec?: string;
+  key?: string;
   closed?: { id: string; ts: string; by: string; text: string };
 }
 

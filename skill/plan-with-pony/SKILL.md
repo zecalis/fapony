@@ -192,6 +192,14 @@ only place that ordering stays true.
 becomes a second copy of the plan, and then neither copy can be trusted. `fapony plan` reads the
 checkboxes in the **first `##` section only**, so section 6 stays detail rather than status.
 
+**Chunk handoff has one shape.** Whoever closes chunk N (tick + sha + commit) leaves what chunk N+1
+must know as
+`fael add note "<…>" --files <f>,plan:<name> --key plan:<name>:chunk-<N+1>` — `<name>` is the
+`PLAN-<name>.md` part, lowercase. Use the `plan:<name>` anchor, never the PLAN path: the path
+changes on `fapony plan sweep` and sits in a gitignored folder. The next session opens the chunk
+with `fapony plan PLAN-<name>.md`, which lists those rows with the next chunk's first — no hook
+needed.
+
 Section 6 — every step must be verifiable. Section 8 — must link back to anything it came from. **A step that needs something the system does not store yet** ("the month the accountant has seen",
 "last synced") must say where it lives, who writes it, and who reads it — or the executing agent
 designs it alone, by exploring (measured: one such chunk burned ~250k tokens before a line of code).

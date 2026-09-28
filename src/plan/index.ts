@@ -18,7 +18,8 @@ const HELP = `usage: fapony plan [<PLAN.md>] | sweep [<PLAN.md>] [--apply] | che
                               (exit 1 on issues)
 
 close a chunk: tick it with its sha, commit, then
-  fael add note "<what chunk N+1 must know>" --files <f1>,<PLAN path>
+  fael add note "<what chunk N+1 must know>" --files <f1>,plan:<name> --key plan:<name>:chunk-<N+1>
+  (<name> = PLAN-<name>.md, lowercase)
 example: fapony plan .fapony/plan/PLAN-x.md`;
 
 export function cmdPlan(a: string[]): void {

@@ -5,7 +5,8 @@
 //               high first, blocked marked; plus shipped-but-not-archived
 //   <PLAN.md> → its unchecked chunks, whether the last ticked chunk's sha
 //               verifies, and the open fael rows about it (the chunk handoff
-//               notes — `fael add note … --files <PLAN path>`)
+//               notes — `fael add note … --files <f>,plan:<name>
+//               --key plan:<name>:chunk-<n>`), the next chunk's rows first
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -14,6 +15,7 @@ import {
   checkTickedLine,
   openRowsFor,
   parsePlanFrontmatter,
+  planKeyName,
   planSweepCmd,
   shippedNotMoved,
 } from "./sweep.js";
@@ -58,7 +60,7 @@ const closureHint = (checked: string[]): string | null => {
   const last = checked[checked.length - 1];
   if (!last) return null;
   const { missing, diverged, cited } = checkTickedLine(last, root);
-  const label = /chunk\s+([^\s—–-]+)/i.exec(last)?.[1] ?? "latest";
+  const label = chunkLabel(last) ?? "latest";
   if (missing.length)
     return `⚠ chunk ${label} is ticked but ${missing[0]} is not in git — nothing proves it closed`;
   if (diverged.length)
@@ -67,6 +69,10 @@ const closureHint = (checked: string[]): string | null => {
     return `⚠ chunk ${label} is ticked but cites no commit — nothing to verify it closed`;
   return null;
 };
+
+/** "chunk 2 — …" → "2"; the label a `plan:<name>:chunk-<n>` key carries. */
+const chunkLabel = (item: string): string | null =>
+  /chunk\s+([^\s—–-]+)/i.exec(item)?.[1].toLowerCase() ?? null;
 
 const readPlanTitle = (planPath: string): string => {
   try {
@@ -114,14 +120,24 @@ function showPlan(file: string): void {
   const hint = closureHint(checked);
   if (hint) console.log(hint);
 
-  const rows = openRowsFor(file);
+  // Rows keyed to the first unchecked chunk lead — they are the handoff
+  // the session opening that chunk came for. Stable sort keeps newest-first.
+  const name = planKeyName(file);
+  const next = unchecked[0] ? chunkLabel(unchecked[0]) : null;
+  const nextKey = name && next ? `plan:${name}:chunk-${next}` : null;
+  const rows = openRowsFor(file)
+    .map((r, i) => ({ r, i, lead: !!nextKey && r.key === nextKey }))
+    .sort((a, b) => Number(b.lead) - Number(a.lead) || a.i - b.i)
+    .map(({ r }) => r);
   if (rows.length) {
     console.log(`\n## open in fael (${rows.length})`);
     for (const r of rows.slice(0, HANDOFF_LIMIT))
-      console.log(`- ${r.ts.slice(0, 10)} ${r.kind} [${r.id}] ${clip(r.text)}`);
+      console.log(
+        `- ${r.ts.slice(0, 10)} ${r.kind} [${r.id}]${r.key ? ` ${r.key}` : ""} ${clip(r.text)}`,
+      );
     if (rows.length > HANDOFF_LIMIT)
       console.log(
-        `… +${rows.length - HANDOFF_LIMIT} more — fael find --files ${rel(file)}`,
+        `… +${rows.length - HANDOFF_LIMIT} more — fael find --files ${name ? `plan:${name}` : rel(file)}`,
       );
   }
 }
