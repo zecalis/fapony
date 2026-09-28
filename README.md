@@ -38,7 +38,7 @@ flowchart TD
     P --> L["fapony review-seed --files …<br/>exports + importers instead of whole-file reads"]
     L --> E["edit<br/>fael read hook: rows about that file"]
     E --> C["tick the chunk with its sha → commit"]
-    C --> N["fael add note 'what chunk N+1 must know'<br/>--files f1,f2,PLAN-x.md"]
+    C --> N["fael add note 'what chunk N+1 must know'<br/>--files f1,plan:x --key plan:x:chunk-N+1"]
     N --> X([stop — don't drag the transcript along])
     X -->|next chunk| S
     C -->|last chunk| W["fapony plan sweep PLAN-x.md --apply<br/>git mv into .fapony/done/"]
@@ -222,8 +222,16 @@ reading a single 100KB plan body into context:
 ```
 
 `fapony plan PLAN-calendar.md` then shows that plan's unchecked chunks, whether the last ticked
-chunk's sha is really in git, and the open fael notes about it — close a chunk with
-`fael add note "<what chunk N+1 must know>" --files <f>,<PLAN path>` and the next session finds it.
+chunk's sha is really in git, and the open fael notes about it — the next chunk's first. Close a chunk with
+
+```sh
+fael add note "<what chunk N+1 must know>" --files <f>,plan:calendar --key plan:calendar:chunk-<N+1>
+```
+
+and the next session finds it. The `plan:<name>` anchor (`<name>` = `PLAN-<name>.md`, lowercase)
+stands in for the plan's path: the path changes when the plan moves into `done/`, and `.fapony/`
+is usually gitignored, so fael cannot follow it. The key ties the note to one chunk. Rows written
+the older way (`--files <PLAN path>`) still show up — fapony matches them by file name.
 
 **There is no `MASTER.md`** — every line above is derived from the plan files themselves, so it
 cannot drift; a hand-kept master file always does. `fapony plan check` verifies ticked chunk

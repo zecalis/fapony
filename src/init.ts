@@ -76,8 +76,9 @@ work done. Cut at chunk boundaries instead:
 Finish a chunk, before starting the next:
 1. Tick its checkbox + stamp the TL;DR, citing the commit sha
 2. Commit — separate from other chunks
-3. \`fael add note "what the next chunk needs" --files f1,f2,<path/to/PLAN-x.md>\`
-   — the plan path in --files is what finds the note again
+3. \`fael add note "what the next chunk needs" --files f1,f2,plan:x --key plan:x:chunk-<N+1>\`
+   — \`plan:x\` (for PLAN-x.md, lowercase) is what finds the note again; not the
+   plan path, which moves when the plan is archived into done/
 4. Stop. Do not continue to the next chunk in the same session unless told to.
 
 Next chunk, new session — open with \`fapony plan PLAN-x.md\` (unchecked chunks +

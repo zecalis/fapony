@@ -330,30 +330,30 @@ test("testPlanSeedConfigFallback", () => {
   );
 });
 
-test("testPlanSeedStepCloseCarriesLiteralPlanPath", () => {
+test("testPlanSeedStepCloseCarriesPlanAnchor", () => {
   withFixture((dir) => {
     withCwd(dir, () => {
-      cmdPlanSeed(["bar"]);
+      cmdPlanSeed(["Bar"]);
       const body = readFileSync(
-        join(dir, ".fapony", "plan", "PLAN-bar.md"),
+        join(dir, ".fapony", "plan", "PLAN-Bar.md"),
         "utf-8",
       );
       const s6 = body.slice(body.indexOf("## 6."), body.indexOf("## 7."));
-      // The handoff path is interpolated, not left as a placeholder: it is the
-      // canonical key kickoff files rows under, and a model that has to
-      // reconstruct ".fapony/plan/PLAN-<name>.md" is a model that can get it wrong.
-      // (kickoff now resolves by filename too, but the right path costs nothing here.)
+      // The handoff names this plan by its fael anchor, interpolated (never a
+      // placeholder a model has to reconstruct) and lowercase (fael's form).
+      // Not the path: it moves on sweep and .fapony/ is usually gitignored.
       assert.ok(
-        s6.includes(".fapony/plan/PLAN-bar.md"),
-        "§6 must carry this plan's real path, not a placeholder",
+        s6.includes("--files <f1,f2>,plan:bar --key plan:bar:chunk-<N+1>"),
+        "§6 must carry this plan's anchor + chunk key",
       );
+      assert.ok(!s6.includes(".fapony/plan/PLAN-"), "no plan path in §6");
       assert.ok(!s6.includes("<path"), "no path placeholder left in §6");
       // The close sequence is spelled out as commands, not implied.
       assert.ok(s6.includes("git commit"), "§6 names the commit step");
       assert.ok(s6.includes("fael add note"), "§6 names the handoff-note step");
     });
   });
-  console.log("  ✓ plan-seed: §6 close block carries the literal plan path");
+  console.log("  ✓ plan-seed: §6 close block carries the plan anchor");
 });
 
 // Chunk 4 (PLAN-seed-and-surface): PLAN carries "Existing in scope" — one

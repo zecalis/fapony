@@ -70,6 +70,10 @@ anything longer belongs in the spec file, not here.
 - **`plan_list` counts the checkboxes in the first `##` section only** — whatever that section is
   called, so the tally works in any language, and a step list deeper in the file stays detail
   instead of becoming status.
+- **Closing a chunk leaves a handoff in fael** — tick it with its sha, commit, then
+  `fael add note "<what chunk N+1 must know>" --files <f>,plan:<feature> --key plan:<feature>:chunk-<N+1>`.
+  `plan:<feature>` (lowercase) is an anchor, not a path: the path moves when the plan is archived
+  into `done/`. `fapony plan PLAN-<feature>.md` lists these rows, the next chunk's first.
 
 **Where files live:** `.fapony/plan/` live · `.fapony/done/` shipped (a sibling, so archiving is a
 plain `git mv` that keeps every relative link working) · `.fapony/spec/` every spec, never archived.

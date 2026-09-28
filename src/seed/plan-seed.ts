@@ -264,8 +264,8 @@ function planTemplate(
   contextFapony: string,
   existingScope: string[],
   specLink: string | null,
-  planRel: string,
 ): string {
+  const anchor = `plan:${name.toLowerCase()}`;
   return `---
 kind: unit
 status: active
@@ -306,7 +306,7 @@ One step = one chunk = one session: finish it, close it, **stop** — starting t
 
 1. _(agent fills in — each step must be verifiable)_
 
-**Closing a step:** tick TL;DR with sha · \`git commit\` files only · \`fael add note "<what chunk N+1 must know>" --files <f1,f2>,${planRel}\` · next opens with \`fapony plan PLAN-${name}.md\` (unchecked chunks + those notes).
+**Closing a step:** tick TL;DR with sha · \`git commit\` files only · \`fael add note "<what chunk N+1 must know>" --files <f1,f2>,${anchor} --key ${anchor}:chunk-<N+1>\` · next opens with \`fapony plan PLAN-${name}.md\` (unchecked chunks + those notes).
 - [ ] handoff: the mem note is the handoff — this box only opts the plan into the Stop-hook check
 
 ## 7. Examples
@@ -796,14 +796,7 @@ export function cmdPlanSeed(args: string[]): void {
 
   mkdirSync(planDirAbs, { recursive: true });
   const buildPlan = (existing: string[]): string =>
-    planTemplate(
-      name,
-      priorArt,
-      contextFapony,
-      existing,
-      specLink,
-      `${planDir()}/PLAN-${name}.md`,
-    );
+    planTemplate(name, priorArt, contextFapony, existing, specLink);
   let planBody = buildPlan(existingScope);
   // The ≤ ~60 contract predates the §4 block — shrink the block (never the
   // judgment sections) until the file fits. Each item is one line, so cutting

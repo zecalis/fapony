@@ -21,15 +21,31 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { type MemRow, readFaelLog } from "../fael.js";
 import { doneDir, planBase, planDir, rel, root } from "./store.js";
 
-// Open fael rows about a plan — matched by basename on files[] or spec, so a
-// row still counts after the plan moves plan/ → done/. One fael call per run.
+/** PLAN-<name>.md → "<name>" lowercased — the fael anchor/key form
+ *  (`plan:<name>`; fael stores anchors lowercase, keys are [a-z0-9._-]). */
+export const planKeyName = (planPath: string): string | null =>
+  /^PLAN-(.+)\.md$/i.exec(basename(planPath))?.[1].toLowerCase() ?? null;
+
+// Open fael rows about a plan — one fael call per run, then matched in TS on
+// any of the three ways a row can name the plan:
+//   files[]/spec basename = PLAN-x.md  (path rows; survives plan/ → done/)
+//   files[] has the anchor  plan:<name>
+//   key = plan:<name> or starts with plan:<name>:  (plan:<name>:chunk-N)
 let openCache: { root: string; rows: MemRow[] } | null = null;
 export const openRowsFor = (planPath: string): MemRow[] => {
   if (openCache?.root !== root)
     openCache = { root, rows: readFaelLog(root, undefined, true).rows };
-  const name = basename(planPath);
-  return openCache.rows.filter((r) =>
-    [...(r.files ?? []), r.spec ?? ""].some((f) => basename(f) === name),
+  const file = basename(planPath);
+  const name = planKeyName(planPath);
+  const anchor = name ? `plan:${name}` : null;
+  return openCache.rows.filter(
+    (r) =>
+      [...(r.files ?? []), r.spec ?? ""].some(
+        (f) => basename(f) === file || (!!anchor && f.toLowerCase() === anchor),
+      ) ||
+      (!!anchor &&
+        !!r.key &&
+        (r.key === anchor || r.key.startsWith(`${anchor}:`))),
   );
 };
 
