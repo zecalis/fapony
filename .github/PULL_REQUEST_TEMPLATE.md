@@ -17,4 +17,4 @@ Paste the tail of `bun run check` (or `gh pr checks` once CI runs) — evidence,
 - [ ] Title is conventional-commit style (`feat: …`, `fix: …`, …)
 - [ ] CI green before merge (`gh pr checks`)
 
-<!-- Merge with `gh pr merge --merge` only — never --squash/--rebase: both rewrite history and the next PR opens with a phantom conflict (see docs/edge-cases.md). -->
+<!-- Squash-merge only (`gh pr merge --squash`) — squash rewrites history by design, so a kept branch must `git reset --hard origin/<default-branch>` after the merge (see docs/edge-cases.md). -->

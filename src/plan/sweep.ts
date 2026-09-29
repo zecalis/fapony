@@ -35,6 +35,12 @@ export const planKeyName = (planPath: string): string | null =>
 // A files[] entry of plan:<name>:chunk-N names the plan just as a key of the
 // same shape does — exact-only on files[] slipped those rows out.
 let openCache: { root: string; rows: MemRow[] } | null = null;
+let allCache: { root: string; rows: MemRow[] } | null = null;
+const allRows = (): MemRow[] => {
+  if (allCache?.root !== root)
+    allCache = { root, rows: readFaelLog(root, undefined, false).rows };
+  return allCache.rows;
+};
 export const openRowsFor = (planPath: string): MemRow[] => {
   if (openCache?.root !== root)
     openCache = { root, rows: readFaelLog(root, undefined, true).rows };
@@ -53,6 +59,31 @@ export const openRowsFor = (planPath: string): MemRow[] => {
       (!!anchor &&
         !!r.key &&
         (r.key === anchor || r.key.startsWith(`${anchor}:`))),
+  );
+};
+
+// Closing-ceremony handoffs — open `plan:<name>:*` rows by anchor key, any
+// kind. Handoff notes (`fael add note --key plan:<name>:chunk-N`) are the
+// plan's unfinished work, but the pre-move check used to filter kind:"bug"
+// only, so they never blocked. Consulted from the --all rows with closes
+// applied locally (newest per key wins, closed ids out) instead of fael's
+// open filter, which the anchor-only rows can slip out of.
+export const openHandoffRowsFor = (planPath: string): MemRow[] => {
+  const name = planKeyName(planPath);
+  if (!name) return [];
+  const prefix = `plan:${name}:`;
+  const rows = allRows();
+  const closed = new Set(
+    rows.filter((r) => r.kind === "close" && r.ref).map((r) => r.ref as string),
+  );
+  const byKey = new Map<string, MemRow>();
+  for (const r of rows) {
+    if (!r.key?.startsWith(prefix)) continue;
+    const cur = byKey.get(r.key);
+    if (!cur || (r.ts ?? "") >= (cur.ts ?? "")) byKey.set(r.key, r);
+  }
+  return [...byKey.values()].filter(
+    (r) => r.kind !== "close" && (r.id == null || !closed.has(r.id)),
   );
 };
 
@@ -472,10 +503,14 @@ export const cmdPlanSweep = (a: string[]) => {
       );
       for (const name of candidates) {
         const spec = `${rel(dir)}/${name}`;
-        const openN = openRowsFor(spec).filter((r) => r.kind === "bug").length;
-        const warn = openN
-          ? `  ⚠ ${openN} open issue(s) (fael) — close before moving`
-          : "";
+        const openBugs = openRowsFor(spec).filter(
+          (r) => r.kind === "bug",
+        ).length;
+        const openHandoffs = openHandoffRowsFor(spec).length;
+        const warn =
+          openBugs + openHandoffs
+            ? `  ⚠ ${openBugs} open issue(s) + ${openHandoffs} open handoff(s) (fael) — close before moving`
+            : "";
         console.log(`- ${rel(dir)}/${name}${warn}`);
       }
       console.log(`\nmove: ${planSweepCmd} <file.md> --apply`);
@@ -551,13 +586,19 @@ export const cmdPlanSweep = (a: string[]) => {
     process.exit(1);
   }
   // Notes and decisions are the plan's history and travel with it (basename
-  // match survives the move); only an open issue (MemRow kind "bug") is
-  // unfinished work.
-  const openN = openRowsFor(rel(src)).filter((r) => r.kind === "bug");
-  if (openN.length && !process.env.MEM_FORCE) {
+  // match survives the move); an open issue (MemRow kind "bug") is unfinished
+  // work — and so is an open handoff row (`plan:<name>:chunk-N`, any kind),
+  // which the old kind-only check let straight through to done/.
+  const openBugs = openRowsFor(rel(src)).filter((r) => r.kind === "bug");
+  const openHandoffs = openHandoffRowsFor(rel(src));
+  if ((openBugs.length || openHandoffs.length) && !process.env.MEM_FORCE) {
+    const lines = [
+      ...openBugs.map((r) => `  [${r.id}] ${r.kind} ${r.text}`),
+      ...openHandoffs.map((r) => `  [${r.id}] handoff ${r.key} ${r.text}`),
+    ];
     console.error(
-      `${name}: still has ${openN.length} open issue(s) (fael) — close them first (MEM_FORCE=1 to override):\n` +
-        openN.map((r) => `  [${r.id}] ${r.kind} ${r.text}`).join("\n"),
+      `${name}: still has ${openBugs.length} open issue(s) + ${openHandoffs.length} open handoff(s) (fael) — close them first (MEM_FORCE=1 to override):\n` +
+        lines.join("\n"),
     );
     process.exit(1);
   }

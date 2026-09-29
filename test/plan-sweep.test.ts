@@ -405,6 +405,84 @@ test("testPlanSweepBlocksOnAnchorPrefixedRows", () => {
   );
 });
 
+// Closing ceremony: an open handoff note (`plan:<name>:chunk-N`, any kind)
+// blocks the sweep; a closed one does not. Consulted by anchor key from the
+// --all rows, not by kind.
+test("testPlanSweepBlocksOnOpenHandoffNotes", () => {
+  withTempRepo((dir) => {
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    mkdirSync(join(dir, ".fapony", "done"), { recursive: true });
+    writeFileSync(
+      join(dir, ".fapony/plan/PLAN-d.md"),
+      `# D\n> ✅ **shipped 2026-09-29** (abc1234)\n`,
+    );
+    const sweep = () =>
+      Bun.spawnSync(["bun", FAPONY, "plan", "sweep", "PLAN-d.md", "--apply"], {
+        cwd: dir,
+        env: process.env, // the fake fael lives on the live PATH
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+    withFakeFael((setRows) => {
+      setRows([
+        {
+          id: "h1",
+          ts: "2026-09-29T00:00:00Z",
+          kind: "note",
+          text: "what chunk 2 must know",
+          key: "plan:d:chunk-1",
+        },
+      ]);
+      const blocked = sweep();
+      assert.equal(blocked.exitCode, 1, "an open handoff note blocks");
+      assert.match(blocked.stderr.toString(), /open handoff.*\n.*\[h1\]/);
+    });
+  });
+  console.log("  ✓ plan-sweep --apply blocks on an open handoff note");
+});
+
+test("testPlanSweepAllowsClosedHandoffNotes", () => {
+  withTempRepo((dir) => {
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    mkdirSync(join(dir, ".fapony", "done"), { recursive: true });
+    writeFileSync(
+      join(dir, ".fapony/plan/PLAN-d.md"),
+      `# D\n> ✅ **shipped 2026-09-29** (abc1234)\n`,
+    );
+    const sweep = () =>
+      Bun.spawnSync(["bun", FAPONY, "plan", "sweep", "PLAN-d.md", "--apply"], {
+        cwd: dir,
+        env: process.env,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+    withFakeFael((setRows) => {
+      setRows([
+        {
+          id: "h1",
+          ts: "2026-09-29T00:00:00Z",
+          kind: "note",
+          text: "what chunk 2 must know",
+          key: "plan:d:chunk-1",
+          closed: {
+            id: "c1",
+            ts: "2026-09-29T01:00:00Z",
+            by: "t",
+            text: "done",
+          },
+        },
+      ]);
+      const ok = sweep();
+      assert.equal(
+        ok.exitCode,
+        0,
+        `a closed handoff must not block:\n${ok.stderr}`,
+      );
+    });
+  });
+  console.log("  ✓ plan-sweep --apply allows a closed handoff note");
+});
+
 // An editor/agent that pastes file:///abs/path links writes a link that works
 // on one machine only. plan check used to call it "broken … no such file in
 // plan/" even when the file existed; it now names the relative path to use.

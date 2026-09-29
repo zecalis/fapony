@@ -56,7 +56,7 @@ You are about to move a PLAN that has been shipped to the archive.
    ```bash
    fapony plan sweep <PLAN-foo.md> --apply
    ```
-   It refuses if the file lacks a shipped header or fael still has an open issue about it (notes and decisions travel with the plan).
+    It refuses if the file lacks a shipped header or fael still has an open issue about it or an open handoff row (`plan:<name>:chunk-N`, any kind) — general notes and decisions travel with the plan.
    If git refuses ("not under version control" — `.fapony/` is gitignored in this repo), plain
    `mv` instead; there's nothing to commit for an untracked path, so skip step 4 in that case.
    The filename gets no date prefix — the ship date is already in the header (step 1).

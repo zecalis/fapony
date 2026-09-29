@@ -14,8 +14,9 @@ import {
   readdirSync,
   readlinkSync,
   symlinkSync,
+  unlinkSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { INSTALL_ROOT, type SkillLinkResult } from "./types.js";
 
 export function claudeSkillsDir(getHome: () => string): string {
@@ -27,11 +28,26 @@ export function agentsSkillsDir(getHome: () => string): string {
 }
 
 /**
+ * A symlink target counts as "ours" when it points at some fapony checkout's
+ * skill dir for the same skill name — `<anywhere>/skill/<name>`. Switching
+ * checkouts (e.g. `bun link` → npm) otherwise leaves a link `fapony install`
+ * refuses to touch ("not a fapony link"), forcing a hand `find -lname -delete`.
+ */
+export function isFaponySkillLink(target: string, name: string): boolean {
+  if (!target) return false;
+  const clean = target.replace(/\/+$/, "");
+  return basename(clean) === name && basename(dirname(clean)) === "skill";
+}
+
+/**
  * Link every skill/<name>/ into `skillsDir`.
  *
  * Never overwrites: a destination that already exists and is not already our
  * link is reported as `conflict` and left alone — it may be the user's own
  * skill, or another tool's, and clobbering it is not ours to decide.
+ *
+ * Exception: a symlink pointing at another fapony checkout's `skill/<name>`
+ * counts as ours and is replaced with this checkout's link.
  */
 export function linkSkills(
   skillsDir: string,
@@ -60,6 +76,19 @@ export function linkSkills(
 
     if (existing === src) {
       out.push({ name, action: "already" });
+      continue;
+    }
+    if (
+      existing !== null &&
+      existing !== "" &&
+      isFaponySkillLink(existing, name)
+    ) {
+      if (!dryRun) {
+        mkdirSync(skillsDir, { recursive: true });
+        unlinkSync(dest);
+        symlinkSync(src, dest);
+      }
+      out.push({ name, action: "linked" });
       continue;
     }
     if (existing !== null) {
