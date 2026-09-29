@@ -211,6 +211,77 @@ test("testKickoffClosureHint", () => {
 
 import { collectDriftWarns } from "../src/plan/sweep.js";
 
+// --- Chunk 3 (PLAN-plan-adopt): unadopted-doc lint ---
+
+import { collectUnadoptedDocWarns } from "../src/plan/sweep.js";
+
+test("testUnadoptedDocWarnFires", () => {
+  withTempRepo((dir) => {
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    // A stray handoff with no plan:handoff anchor anywhere in its text
+    writeFileSync(
+      join(dir, ".fapony/plan/handoff.md"),
+      `# Handoff\n\nThe ops team wants a replay endpoint.\n`,
+    );
+    const warns = collectUnadoptedDocWarns([
+      join(dir, ".fapony/plan/handoff.md"),
+    ]);
+    assert.equal(warns.length, 1, `stray doc must warn:\n${warns.join("\n")}`);
+    assert.match(warns[0], /doc without adopted anchor/);
+    assert.match(warns[0], /fapony plan adopt/);
+  });
+  console.log("  ✓ unadopted doc without its anchor → warn");
+});
+
+test("testUnadoptedDocWarnAdoptedSilent", () => {
+  withTempRepo((dir) => {
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    // The anchor is present — adopted (or at least tagged), no warn
+    writeFileSync(
+      join(dir, ".fapony/plan/handoff.md"),
+      `# Handoff\n\nanchor: plan:handoff\n`,
+    );
+    // PLAN files never warn, anchor or not — they are already plans
+    writeFileSync(
+      join(dir, ".fapony/plan/PLAN-x.md"),
+      `---\nkind: unit\n---\n\n# X\n\n## TL;DR\n- [ ] chunk 1 — next\n`,
+    );
+    const warns = collectUnadoptedDocWarns([
+      join(dir, ".fapony/plan/handoff.md"),
+      join(dir, ".fapony/plan/PLAN-x.md"),
+    ]);
+    assert.equal(warns.length, 0, `adopted doc must not warn:\n${warns}`);
+  });
+  console.log("  ✓ adopted doc + PLAN files → no warn");
+});
+
+test("testUnadoptedDocWarnE2E", () => {
+  withTempRepo((dir) => {
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    mkdirSync(join(dir, ".fapony", "done"), { recursive: true });
+    writeFileSync(
+      join(dir, ".fapony/plan/PLAN-clean.md"),
+      `---\nkind: unit\n---\n\n# Clean\n\n> **Status:** 🚧 in-progress\n\n## TL;DR\n- [x] chunk 1 — done\n- [ ] chunk 2 — next\n`,
+    );
+    writeFileSync(
+      join(dir, ".fapony/plan/handoff.md"),
+      `# Handoff\n\nThe ops team wants a replay endpoint.\n`,
+    );
+    const proc = Bun.spawnSync(["bun", FAPONY, "plan", "check"], {
+      cwd: dir,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    // Detect-only: warns print, exit stays 0
+    const out = proc.stdout.toString();
+    assert.equal(proc.exitCode, 0, `unadopted-doc warn must not fail:\n${out}`);
+    assert.match(out, /drift warning\(s\)/, "prints in the warns section");
+    assert.match(out, /handoff\.md/, "names the stray doc");
+    assert.match(out, /fapony plan adopt/, "points at the adopt command");
+  });
+  console.log("  ✓ plan-check e2e: unadopted doc warns but doesn't block");
+});
+
 test("testDriftWarnW1NotStartedWithTicks", () => {
   withTempRepo((dir) => {
     mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });

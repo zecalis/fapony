@@ -1,8 +1,8 @@
-// src/adapters/hooks/mv-guard.ts — PreToolUse Bash guard: deny a raw `git mv`
-// of a plan file into a done/ directory, point at `fapony plan sweep
+// src/adapters/hooks/mv-guard.ts — PreToolUse Bash guard: deny a raw `mv` /
+// `git mv` of a plan file into a done/ directory, point at `fapony plan sweep
 // --apply` instead.
 //
-// Manual `git mv` skips the link rewrite plan-sweep does — that produced two
+// Manual `mv` skips the link rewrite plan-sweep does — that produced two
 // rounds of dangling links (mem mtjn3ldk, mtl15q4y) and once, a plan moved to
 // a path that doesn't exist (.fapony/plan/done/ instead of .fapony/done/).
 // Every other fapony hook only annotates; this one denies, because asking
@@ -13,7 +13,7 @@
 // so there is nothing left to deny by the time that hook sees it.
 
 const MV_PATTERN =
-  /git\s+mv\s+(?:-\S+\s+)*["']?([^"'\s]*\.fapony\/(?:[^/\s]+\/)*plan\/PLAN-[^"'\s]+\.md)["']?\s+["']?([^"'\s]*\bdone\/?)["']?/;
+  /(?:git\s+)?mv\s+(?:-\S+\s+)*["']?([^"'\s]*\.fapony\/(?:[^/\s]+\/)*plan\/PLAN-[^"'\s]+\.md)["']?\s+["']?([^"'\s]*\bdone\/?)["']?/;
 
 /** Deny reason for a raw `git mv <plan>.md <...done/>` command, or null to allow. */
 export function mvGuardDecision(command: unknown): string | null {

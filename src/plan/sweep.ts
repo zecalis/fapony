@@ -29,8 +29,10 @@ export const planKeyName = (planPath: string): string | null =>
 // Open fael rows about a plan — one fael call per run, then matched in TS on
 // any of the three ways a row can name the plan:
 //   files[]/spec basename = PLAN-x.md  (path rows; survives plan/ → done/)
-//   files[] has the anchor  plan:<name>
+//   files[] has the anchor  plan:<name> or plan:<name>:* (anchor rows)
 //   key = plan:<name> or starts with plan:<name>:  (plan:<name>:chunk-N)
+// A files[] entry of plan:<name>:chunk-N names the plan just as a key of the
+// same shape does — exact-only on files[] slipped those rows out.
 let openCache: { root: string; rows: MemRow[] } | null = null;
 export const openRowsFor = (planPath: string): MemRow[] => {
   if (openCache?.root !== root)
@@ -40,9 +42,13 @@ export const openRowsFor = (planPath: string): MemRow[] => {
   const anchor = name ? `plan:${name}` : null;
   return openCache.rows.filter(
     (r) =>
-      [...(r.files ?? []), r.spec ?? ""].some(
-        (f) => basename(f) === file || (!!anchor && f.toLowerCase() === anchor),
-      ) ||
+      [...(r.files ?? []), r.spec ?? ""].some((f) => {
+        const fl = f.toLowerCase();
+        return (
+          basename(f) === file ||
+          (!!anchor && (fl === anchor || fl.startsWith(`${anchor}:`)))
+        );
+      }) ||
       (!!anchor &&
         !!r.key &&
         (r.key === anchor || r.key.startsWith(`${anchor}:`))),
@@ -303,6 +309,33 @@ export const hasShippedHeader = (file: string): boolean => {
   const head = readFileSync(file, "utf8").slice(0, 2048);
   if (!SHIPPED.test(head)) return false;
   return !HELD.test(FRONT.exec(head)?.[1] ?? "");
+};
+
+// A non-PLAN doc sitting in plan/ with no adopted anchor — someone dropped a
+// handoff/spec/todo straight into plan/ instead of `fapony plan adopt`, so it
+// has no plan:<name> anchor for sweep's closing check to consult. Detect-only:
+// WARN-level like drift warns, never changes the exit code.
+export const collectUnadoptedDocWarns = (active: string[]): string[] => {
+  const warns: string[] = [];
+  for (const f of active) {
+    const base = basename(f);
+    if (/^PLAN-.*\.md$/i.test(base)) continue;
+    const slug = base.replace(/\.md$/i, "").toLowerCase();
+    if (!slug) continue;
+    const anchor = `plan:${slug}`;
+    let text: string;
+    try {
+      text = readFileSync(f, "utf8").toLowerCase();
+    } catch {
+      continue;
+    }
+    if (!text.includes(anchor)) {
+      warns.push(
+        `${relative(planBase, f)} — doc without adopted anchor — meant for \`fapony plan adopt\`?\n   fix: adopt it via \`fapony plan adopt ${base}\` or tag its fael rows with ${anchor}`,
+      );
+    }
+  }
+  return warns;
 };
 
 export const planSweepCmd = "fapony plan sweep";
@@ -836,7 +869,9 @@ export const cmdPlanCheck = (a: string[]) => {
 
   // 7) Drift warns — W1 (not-started header + ticks) and W2 (all ticked +
   //    not shipped). WARN-only: counted separately, never changes exit code.
+  //    Unadopted docs join them: a stray handoff in plan/ is a nudge, not a failure.
   const driftWarns = collectDriftWarns(active);
+  driftWarns.push(...collectUnadoptedDocWarns(active));
 
   if (!quiet) {
     console.log(
