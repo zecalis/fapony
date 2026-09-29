@@ -48,7 +48,30 @@ scope", which is not the same as "not there".
 That is the fact-gathering, without the file — roughly 1k tokens, deterministic, and it is the front half of the pair the dev already closes with
 `review-pony`. Hand it over and stop; do not draft a plan nobody asked to keep.
 
-Go on to Phase 0 only when the work is a feature with a life beyond today.
+Go on to Phase 1 only when the work is a feature with a life beyond today.
+
+## Adopt mode — start from someone else's doc
+
+Trigger: `/plan-with-pony adopt <doc>` — `<doc>` is a path to a handoff, client
+request, ticket, or todo someone outside this workflow wrote. It is input, not agreement.
+
+- **Phase 0 is the doc read, not the conversation harvest.** Read `<doc>` (or the
+  `## Context (adopted)` block when `fapony plan adopt <doc>` already copied it into
+  `.fapony/plan/PLAN-<slug>.md` — prefer that file when it exists; its stdout names
+  the anchor and points here). No conversation harvest on top of it.
+- **Phase 1 still runs, once.** Default to: "What does this doc ask me to build,
+  short version:" — the answer may come straight out of the doc; confirm it in one
+  line instead of re-asking from zero.
+- **Phase 2 maps the doc into plan sections 1–8.** Doc prose enters §1/§2/§3 as
+  cited context lines, never as pre-ticked checkboxes. Tag every kept doc claim
+  `(from doc)`, everything the doc doesn't say `(guess)`. Once you truth-checked a
+  `(from doc)` line against the code, drop the tag.
+- **The anchor comes from the plan file, never from this text.** The adopted (or
+  seeded) PLAN already carries its `fael add note … --key …:chunk-<N+1>` handoff
+  line in §6 with the real anchor filled in — copy that line, don't invent one.
+- Pushback lives here, not in the CLI: the sync copied the doc verbatim and can't
+  judge intent, so a destructive or contradictory request gets challenged in the
+  draft (Phase 2), not silently chunked.
 
 ## Phase 0 — What the dev already said
 
@@ -193,9 +216,9 @@ becomes a second copy of the plan, and then neither copy can be trusted. `fapony
 checkboxes in the **first `##` section only**, so section 6 stays detail rather than status.
 
 **Chunk handoff has one shape.** Whoever closes chunk N (tick + sha + commit) leaves what chunk N+1
-must know as
-`fael add note "<…>" --files <f>,plan:<name> --key plan:<name>:chunk-<N+1>` — `<name>` is the
-`PLAN-<name>.md` part, lowercase. Use the `plan:<name>` anchor, never the PLAN path: the path
+must know as the `fael add note … --files … --key …:chunk-<N+1>` line already sitting in the plan's
+own §6 (seeded by `plan-seed`, or by `plan adopt` for an adopted doc) — copy it, fill in the files
+and the note text. Use the plan's own anchor, never the PLAN path: the path
 changes on `fapony plan sweep` and sits in a gitignored folder. The next session opens the chunk
 with `fapony plan PLAN-<name>.md`, which lists those rows with the next chunk's first — no hook
 needed.
