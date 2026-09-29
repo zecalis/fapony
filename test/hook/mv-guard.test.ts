@@ -43,7 +43,25 @@ test("testMvGuardDeniesPlainMv", () => {
     null,
     "non-plan plain mv is untouched",
   );
+  assert.ok(
+    mvGuardDecision("cd repo && git mv .fapony/plan/PLAN-x.md .fapony/done/"),
+    "an mv after a shell separator still runs mv and is denied",
+  );
   console.log("  ✓ mvGuardDecision denies plain mv of a plan into done/");
+});
+
+test("testMvGuardIgnoresProseMentions", () => {
+  // Read-only commands that merely spell the pattern out are not mv — an
+  // unanchored match used to deny them.
+  for (const cmd of [
+    "grep -rn 'mv .fapony/plan/PLAN-alerts.md .fapony/done/' docs/",
+    "echo 'git mv .fapony/plan/PLAN-x.md .fapony/done/'",
+    "git commit -m 'manually mv .fapony/plan/PLAN-x.md .fapony/done/'",
+  ])
+    assert.equal(mvGuardDecision(cmd), null, `prose mention must pass: ${cmd}`);
+  console.log(
+    "  ✓ mvGuardDecision ignores prose that only mentions the pattern",
+  );
 });
 
 test("testMvGuardAllowsEverythingElse", () => {
