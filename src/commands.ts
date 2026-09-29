@@ -34,7 +34,8 @@ export const COMMANDS: CommandInfo[] = [
   {
     name: "plan",
     group: "core",
-    summary: "where plans stand: next chunk, sweep shipped, check links/shas",
+    summary:
+      "where plans stand: next chunk, adopt a foreign doc, sweep shipped, check",
   },
   {
     name: "debt",
