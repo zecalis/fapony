@@ -7,10 +7,12 @@ import {
   formatDirtyBlock,
   isUpToDate,
   parseDirtyLines,
+  parseUpdateArgs,
   ROOT,
   readVersion,
   refreshArgv,
   shouldProceedAfterDirty,
+  shouldUpgrade,
   type UpdateDeps,
 } from "../src/update.js";
 
@@ -105,6 +107,31 @@ test("testIsUpToDate", () => {
   console.log("  ✓ isUpToDate");
 });
 
+test("testParseUpdateArgs", () => {
+  assert.deepStrictEqual(parseUpdateArgs([]), { dryRun: false, yes: false });
+  assert.deepStrictEqual(parseUpdateArgs(["--dry-run"]), {
+    dryRun: true,
+    yes: false,
+  });
+  assert.deepStrictEqual(parseUpdateArgs(["--yes"]), {
+    dryRun: false,
+    yes: true,
+  });
+  assert.deepStrictEqual(parseUpdateArgs(["-y"]), {
+    dryRun: false,
+    yes: true,
+  });
+  console.log("  ✓ parseUpdateArgs");
+});
+
+test("testShouldUpgrade", () => {
+  assert.equal(shouldUpgrade("y"), true);
+  assert.equal(shouldUpgrade("Y"), true);
+  assert.equal(shouldUpgrade("n"), false);
+  assert.equal(shouldUpgrade(""), false);
+  console.log("  ✓ shouldUpgrade");
+});
+
 // --- cmdUpdate orchestration (seam-based, no real git/stdin/process) ---
 
 class TestExit extends Error {
@@ -195,6 +222,7 @@ test("testCmdUpdateDirtyDeclined", async () => {
     await cmdUpdate({
       git,
       exit: testExit,
+      isTTY: true,
       prompt: async () => {
         prompted++;
         return "n";
@@ -204,6 +232,10 @@ test("testCmdUpdateDirtyDeclined", async () => {
   assert.equal(prompted, 1);
   assert.ok(out.includes("Update cancelled"), `got: ${out}`);
   assert.ok(!calls.some((c) => c.startsWith("pull")), "pull must not run");
+  assert.ok(
+    !calls.some((c) => c.startsWith("stash push")),
+    "declined dirty prompt must not stash",
+  );
   console.log("  ✓ cmdUpdate dirty declined cancels");
 });
 
@@ -226,6 +258,7 @@ test("testCmdUpdateDirtyPullOk", async () => {
     await cmdUpdate({
       git,
       exit: testExit,
+      isTTY: true,
       install: () => {
         installCalls++;
       },
@@ -256,7 +289,12 @@ test("testCmdUpdatePullFailPopOk", async () => {
   let code: number | null = null;
   const { err } = await captureOutput(async () => {
     try {
-      await cmdUpdate({ git, exit: testExit, prompt: async () => "y" });
+      await cmdUpdate({
+        git,
+        exit: testExit,
+        isTTY: true,
+        prompt: async () => "y",
+      });
     } catch (e) {
       code = (e as TestExit).code;
     }
@@ -264,6 +302,146 @@ test("testCmdUpdatePullFailPopOk", async () => {
   assert.equal(code, 1);
   assert.ok(err.includes("restored"), `got: ${err}`);
   console.log("  ✓ cmdUpdate pull-fail pop-ok restores stash");
+});
+
+test("testCmdUpdateNonTTYDirtyFailsFast", async () => {
+  const { git, calls } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain": " M a.ts",
+      "pull --ff-only": "",
+    },
+    { shas: ["aaa111"] },
+  );
+  let code: number | null = null;
+  const { err } = await captureOutput(async () => {
+    try {
+      await cmdUpdate({
+        git,
+        exit: testExit,
+        isTTY: false,
+        prompt: async () => {
+          throw new Error("must not prompt on a non-TTY");
+        },
+      });
+    } catch (e) {
+      code = (e as TestExit).code;
+    }
+  });
+  assert.equal(code, 1);
+  assert.ok(err.includes("no terminal"), `got: ${err}`);
+  assert.ok(!calls.some((c) => c.startsWith("pull")), "must not pull");
+  console.log("  ✓ cmdUpdate non-TTY + dirty → fail fast, no hang, no pull");
+});
+
+test("testCmdUpdateYesAutoStashes", async () => {
+  const { git, calls } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain": " M a.ts",
+      "log HEAD..@{u} --oneline --no-decorate": "bbb111 incoming",
+      "stash push -m 'fapony auto-stash before update'": "",
+      "pull --ff-only": "",
+      "stash pop": "",
+      "diff --name-only HEAD@{1} HEAD -- bun.lock": "",
+    },
+    { shas: ["aaa111", "bbb111"] },
+  );
+  const { out } = await captureOutput(async () => {
+    await cmdUpdate(["--yes"], {
+      git,
+      exit: testExit,
+      isTTY: false,
+      refresh: () => {},
+      prompt: async () => {
+        throw new Error("--yes must not prompt");
+      },
+    });
+  });
+  assert.ok(
+    calls.includes("stash push -m 'fapony auto-stash before update'"),
+    "clean script run should auto-stash",
+  );
+  assert.ok(
+    calls.some((c) => c.startsWith("pull")),
+    "should pull",
+  );
+  assert.ok(out.includes("stashed (--yes)"), `got: ${out}`);
+  console.log("  ✓ cmdUpdate --yes → no prompts, auto-stash, pull");
+});
+
+test("testCmdUpdateDeclineConfirmLeavesTreeUntouched", async () => {
+  // The regression this guards: stash used to run before the confirm, so a
+  // "no" to the upgrade left the working tree reverted and changes stranded.
+  const { git, calls } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain": " M a.ts",
+      "log HEAD..@{u} --oneline --no-decorate": "bbb111 incoming",
+    },
+    { shas: ["aaa111"] },
+  );
+  const { out } = await captureOutput(async () => {
+    await cmdUpdate({
+      git,
+      exit: testExit,
+      isTTY: true,
+      prompt: async () => "n",
+    });
+  });
+  assert.ok(out.includes("Upgrade cancelled"), `got: ${out}`);
+  assert.ok(
+    !calls.some((c) => c.startsWith("stash push")),
+    "confirm declined before stash — nothing stranded",
+  );
+  assert.ok(!calls.some((c) => c.startsWith("pull")), "must not pull");
+  console.log("  ✓ cmdUpdate declining confirm never stashes");
+});
+
+test("testCmdUpdateDetachedUpstreamFallback", async () => {
+  // `@{u}` errors on a detached HEAD (this repo's own worktree topology);
+  // the preview must fall back to origin/main rather than read it as empty.
+  const { git } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain": "",
+      "log HEAD..@{u} --oneline --no-decorate": new Error(
+        "no upstream configured",
+      ),
+      "log HEAD..origin/main --oneline --no-decorate":
+        "ccc333 detached fallback",
+    },
+    { shas: ["aaa111"] },
+  );
+  const { out } = await captureOutput(async () => {
+    await cmdUpdate(["--dry-run"], {
+      git,
+      exit: testExit,
+      isTTY: false,
+    });
+  });
+  assert.ok(out.includes("ccc333 detached fallback"), `got: ${out}`);
+  assert.ok(
+    !out.includes("Already up to date"),
+    `must not claim up to date: ${out}`,
+  );
+  console.log("  ✓ cmdUpdate detached HEAD falls back to origin/main");
+});
+
+test("testCmdUpdateNoUpstreamDryRunSaysSo", async () => {
+  const { git } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain": "",
+      "log*": new Error("no ref"),
+    },
+    { shas: ["aaa111"] },
+  );
+  const { out } = await captureOutput(async () => {
+    await cmdUpdate(["--dry-run"], { git, exit: testExit, isTTY: false });
+  });
+  assert.ok(out.includes("No upstream ref"), `got: ${out}`);
+  console.log("  ✓ cmdUpdate no upstream → honest dry-run message");
 });
 
 test("testCmdUpdatePullFailPopFail", async () => {
@@ -281,7 +459,12 @@ test("testCmdUpdatePullFailPopFail", async () => {
   let code: number | null = null;
   const { err } = await captureOutput(async () => {
     try {
-      await cmdUpdate({ git, exit: testExit, prompt: async () => "y" });
+      await cmdUpdate({
+        git,
+        exit: testExit,
+        isTTY: true,
+        prompt: async () => "y",
+      });
     } catch (e) {
       code = (e as TestExit).code;
     }
@@ -351,7 +534,7 @@ test("testCmdUpdateLockfileTriggersInstall", async () => {
     });
   });
   assert.equal(installCalls, 1);
-  assert.ok(out.includes("Recent changes"), `got: ${out}`);
+  assert.ok(out.includes("What's new"), `got: ${out}`);
   assert.ok(out.includes("bbb111 new feature"), `got: ${out}`);
   assert.ok(out.includes("Dependencies updated"), `got: ${out}`);
   console.log("  ✓ cmdUpdate lockfile change runs install");
@@ -409,4 +592,60 @@ test("testCmdUpdateNoRefreshOnPullFail", async () => {
   });
   assert.equal(refreshCalls, 0, "a failed pull must not refresh plugins");
   console.log("  ✓ cmdUpdate pull-fail → no plugin refresh");
+});
+
+test("testCmdUpdateDryRunNoPull", async () => {
+  const { git, calls } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain": "",
+      "fetch --quiet": "",
+      "log HEAD..@{u} --oneline --no-decorate": "bbb111 incoming",
+    },
+    { shas: ["aaa111"] },
+  );
+  let prompted = 0;
+  const { out } = await captureOutput(async () => {
+    await cmdUpdate(["--dry-run"], {
+      git,
+      exit: testExit,
+      prompt: async () => {
+        prompted++;
+        return "y";
+      },
+    });
+  });
+  assert.equal(prompted, 0, "dry run must never prompt");
+  assert.ok(!calls.some((c) => c.startsWith("pull")), "dry run must not pull");
+  assert.ok(out.includes("dry run"), `got: ${out}`);
+  assert.ok(out.includes("bbb111 incoming"), `got: ${out}`);
+  console.log("  ✓ cmdUpdate dry-run previews without pulling");
+});
+
+test("testCmdUpdateConfirmDeclined", async () => {
+  const { git, calls } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain": "",
+      "fetch --quiet": "",
+      "log HEAD..@{u} --oneline --no-decorate": "bbb111 incoming",
+    },
+    { shas: ["aaa111"] },
+  );
+  let prompted = 0;
+  const { out } = await captureOutput(async () => {
+    await cmdUpdate({
+      git,
+      exit: testExit,
+      isTTY: true,
+      prompt: async () => {
+        prompted++;
+        return "n";
+      },
+    });
+  });
+  assert.equal(prompted, 1, "one confirm prompt for incoming changes");
+  assert.ok(!calls.some((c) => c.startsWith("pull")), "declined must not pull");
+  assert.ok(out.includes("Upgrade cancelled"), `got: ${out}`);
+  console.log("  ✓ cmdUpdate confirm declined cancels");
 });

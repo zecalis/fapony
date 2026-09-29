@@ -66,8 +66,8 @@ export async function cliMain(): Promise<void> {
     await cmdInstall(a);
   } else if (cmd === "setup") {
     await cmdSetup();
-  } else if (cmd === "update") {
-    await cmdUpdate();
+  } else if (cmd === "update" || cmd === "upgrade") {
+    await cmdUpdate(a, {});
   } else if (cmd === "hook-mv-guard") {
     await cmdHookMvGuard();
   } else if (cmd === "report") {

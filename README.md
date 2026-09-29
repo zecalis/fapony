@@ -130,8 +130,9 @@ fapony usage-web            # dashboard; re-run the scans to refresh
 #    both scans are manual by design — nothing fetches or re-reads session logs behind your back
 
 # 3. Wire your clients
-fapony install              # detects installed clients, asks which to wire
+fapony install              # list what is installed / missing, ask which to wire
 fapony install --all        # skip the prompt, wire everything detected
+fapony install --dry-run    # preview only — list only, never prompt
 #    claude/opencode also symlink skill/<name>/ into ~/.claude/skills — an existing
 #    skill of the same name is reported, never overwritten
 
@@ -273,7 +274,8 @@ fapony report-web [file]                   # static HTML report page
 fapony init <path>                         # scaffold .fapony/ (plan/done/spec/evidence)
 fapony install [--all|--platform <name>|--dry-run]  # wire skills + plan-mv guard into clients
 fapony setup                               # interactive wizard: config + scaffold in one step
-fapony update                              # self-update via git pull
+fapony update [--dry-run|--yes]            # preview what's coming, confirm once, then upgrade
+fapony upgrade                             # alias of update
 fapony telemetry show|send                 # opt-in only, default off — see TELEMETRY.md
 ```
 

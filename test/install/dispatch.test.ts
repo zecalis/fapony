@@ -228,27 +228,44 @@ test("testCmdInstallNoPlatformDryRunNoWrite", async () => {
     const deps: InstallDeps = {
       homedir: () => home,
       checkCmd: () => false,
-      ask: async () => "y",
+      ask: async () => {
+        throw new Error("dry run must never prompt");
+      },
     };
 
+    const lines: string[] = [];
+    const origError = console.error;
+    console.error = (...a: unknown[]) => {
+      lines.push(a.map(String).join(" "));
+    };
     const origIsTTY = process.stdin.isTTY;
     Object.defineProperty(process.stdin, "isTTY", {
       value: true,
       configurable: true,
     });
     try {
-      await cmdInstall(["--all", "--dry-run"], deps);
+      await cmdInstall(["--dry-run"], deps);
     } finally {
       Object.defineProperty(process.stdin, "isTTY", {
         value: origIsTTY,
         configurable: true,
       });
+      console.error = origError;
     }
 
+    const output = lines.join("\n");
+    assert.ok(
+      output.includes("✓ opencode"),
+      `lists detected client: ${output}`,
+    );
+    assert.ok(
+      output.includes("dry run — nothing is written"),
+      `dry-run header: ${output}`,
+    );
     // Config should NOT be modified (dry run)
     const cfg = JSON.parse(readFileSync(join(ocDir, "opencode.json"), "utf-8"));
     assert.deepStrictEqual(cfg, {}, "dry-run should not write opencode config");
-    console.log("  ✓ install --all --dry-run → no file writes");
+    console.log("  ✓ install --dry-run → list only, no prompt, no writes");
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
