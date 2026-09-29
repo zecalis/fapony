@@ -84,6 +84,9 @@ export interface UpdateDeps {
   refresh?: () => void;
   prompt?: (question: string, defaultVal?: string) => Promise<string>;
   exit?: (code: number) => never;
+  /** Whether a human can answer a prompt — defaults to process.stdin.isTTY.
+   *  Injectable so tests exercise the interactive path without a real TTY. */
+  isTTY?: boolean;
 }
 
 export interface UpdateArgs {
@@ -168,6 +171,7 @@ export async function cmdUpdate(
   const refreshFn = deps.refresh ?? defaultRefreshPlugins;
   const promptFn = deps.prompt ?? defaultPrompt;
   const exitFn = deps.exit ?? ((code: number): never => process.exit(code));
+  const isTTY = deps.isTTY ?? Boolean(process.stdin.isTTY);
   const gitQuiet = (args: string): string | null => {
     try {
       return git(args);
@@ -188,15 +192,83 @@ export async function cmdUpdate(
     exitFn(1);
   }
 
-  // --- check uncommitted changes ---
+  // --- check uncommitted changes (read-only; stashing waits for the confirm) ---
   const dirty = git("status --porcelain");
   const hasDirty = parseDirtyLines(dirty).length > 0;
   if (hasDirty) {
     console.log("⚠  You have uncommitted changes in the fapony repo:\n");
     console.log(formatDirtyBlock(dirty));
     console.log();
-    if (dryRun) {
-      console.log("  dry run — nothing is stashed or pulled.");
+  }
+
+  // --- capture old version + recent commits ---
+  const oldVersion = readVersion();
+  const oldSha = gitQuiet("rev-parse --short HEAD") ?? "unknown";
+
+  // --- preview incoming (fetch never writes the worktree) ---
+  // `@{u}` is unset on a detached HEAD — this repo's own worktree topology —
+  // so fall back to the remote-tracking branch. Reading "no upstream" as
+  // "nothing incoming" turned the whole preview into a silent no-op.
+  gitQuiet("fetch --quiet");
+  const upstreamRefs = ["@{u}"];
+  const remoteHead = gitQuiet("symbolic-ref --short refs/remotes/origin/HEAD");
+  if (remoteHead) upstreamRefs.push(remoteHead);
+  upstreamRefs.push("origin/main", "origin/master");
+  let incomingLines: string[] = [];
+  let comparedRef: string | null = null;
+  for (const ref of upstreamRefs) {
+    const out = gitQuiet(`log HEAD..${ref} --oneline --no-decorate`);
+    if (out === null) continue;
+    comparedRef = ref;
+    incomingLines = out.split("\n").filter((l) => l.trim() !== "");
+    break;
+  }
+  if (incomingLines.length > 0) {
+    console.log("\n  What's coming:\n");
+    for (const line of incomingLines.slice(0, 10)) {
+      console.log(`    ${line}`);
+    }
+    if (incomingLines.length > 10) {
+      console.log(`    ... and ${incomingLines.length - 10} more`);
+    }
+  }
+
+  if (dryRun) {
+    console.log("\n  dry run — nothing is pulled or written.");
+    if (comparedRef === null) {
+      console.log(
+        "  ?  No upstream ref to compare against — pull will decide.",
+      );
+    } else if (incomingLines.length === 0) {
+      console.log("  ✓  Already up to date — no changes to preview.");
+    }
+    console.log("  To preview client changes too: fapony install --dry-run");
+    return;
+  }
+
+  // --- confirm before anything mutates ---
+  // This runs before the dirty-tree stash on purpose: asking to stash first
+  // and then asking again stranded the auto-stash when the second answer was
+  // "no". Non-TTY (cron/CI) proceeds like the pre-preview behaviour instead of
+  // hanging on a readline that never returns; --yes skips the ask for scripts.
+  if (incomingLines.length > 0 && !yes && isTTY) {
+    const answer = await promptFn("   Upgrade fapony now? (y/n)", "Y");
+    if (!shouldUpgrade(answer)) {
+      console.log("\n  Upgrade cancelled.");
+      return;
+    }
+  }
+
+  // --- stash only now that we are committed to pulling ---
+  if (hasDirty) {
+    if (yes) {
+      git("stash push -m 'fapony auto-stash before update'");
+      console.log("  ✓  Changes stashed (--yes).\n");
+    } else if (!isTTY) {
+      console.error(
+        "  ❌ uncommitted changes and no terminal — commit or stash first, or re-run with --yes.",
+      );
+      exitFn(1);
     } else {
       const proceed = await promptFn(
         "   Stash changes and pull anyway? (y/n)",
@@ -210,45 +282,6 @@ export async function cmdUpdate(
       console.log("  ✓  Changes stashed.\n");
     }
   }
-
-  // --- preview incoming (fetch never writes the worktree) ---
-  gitQuiet("fetch --quiet");
-  const incoming = gitQuiet("log HEAD..@{u} --oneline --no-decorate");
-  const incomingLines = (incoming ?? "")
-    .split("\n")
-    .filter((l) => l.trim() !== "");
-  if (incomingLines.length > 0) {
-    console.log("\n  What's coming:\n");
-    for (const line of incomingLines.slice(0, 10)) {
-      console.log(`    ${line}`);
-    }
-    if (incomingLines.length > 10) {
-      console.log(`    ... and ${incomingLines.length - 10} more`);
-    }
-  }
-
-  if (dryRun) {
-    console.log("\n  dry run — nothing is pulled or written.");
-    if (incomingLines.length === 0 && !hasDirty) {
-      console.log("  ✓  Already up to date — no changes to preview.");
-    }
-    console.log("  To preview client changes too: fapony install --dry-run");
-    return;
-  }
-
-  // Single confirm before the pull — only when something is incoming.
-  // Up-to-date stays silent (no useless prompt); --yes skips for scripts.
-  if (incomingLines.length > 0 && !yes) {
-    const answer = await promptFn("   Upgrade fapony now? (y/n)", "Y");
-    if (!shouldUpgrade(answer)) {
-      console.log("\n  Upgrade cancelled.");
-      return;
-    }
-  }
-
-  // --- capture old version + recent commits ---
-  const oldVersion = readVersion();
-  const oldSha = gitQuiet("rev-parse --short HEAD") ?? "unknown";
 
   // --- pull ---
   console.log("  Pulling latest changes...");
