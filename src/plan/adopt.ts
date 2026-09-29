@@ -20,7 +20,7 @@ import { doneDir, planBase, root } from "./store.js";
 // The fael anchor is lowercase `[a-z0-9._-]`; planKeyName (sweep.ts) already
 // holds that rule for PLAN names, so the slug the name is built from respects
 // it on the way in.
-const slugify = (s: string): string =>
+export const slugify = (s: string): string =>
   s
     .toLowerCase()
     .replace(/\.md$/, "")

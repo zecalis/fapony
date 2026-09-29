@@ -233,6 +233,25 @@ test("testUnadoptedDocWarnFires", () => {
   console.log("  ✓ unadopted doc without its anchor → warn");
 });
 
+test("testUnadoptedDocWarnSlugMatchesAdopt", () => {
+  withTempRepo((dir) => {
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    // The warn must name the anchor `fapony plan adopt` would actually set —
+    // punctuation slugified to `-`, not a bare lowercased basename.
+    writeFileSync(
+      join(dir, ".fapony/plan/Billing Handoff.md"),
+      `# Handoff\n\nno anchor here\n`,
+    );
+    const warns = collectUnadoptedDocWarns([
+      join(dir, ".fapony/plan/Billing Handoff.md"),
+    ]);
+    assert.equal(warns.length, 1, warns.join("\n"));
+    assert.match(warns[0], /plan:billing-handoff\b/);
+    assert.ok(!warns[0].includes("plan:billing handoff"));
+  });
+  console.log("  ✓ warn anchor slug matches adopt's slugify");
+});
+
 test("testUnadoptedDocWarnAdoptedSilent", () => {
   withTempRepo((dir) => {
     mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });

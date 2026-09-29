@@ -19,6 +19,7 @@ import {
 import { basename, dirname, join, relative, resolve } from "node:path";
 
 import { type MemRow, readFaelLog } from "../fael.js";
+import { slugify } from "./adopt.js";
 import { doneDir, planBase, planDir, rel, root } from "./store.js";
 
 /** PLAN-<name>.md → "<name>" lowercased — the fael anchor/key form
@@ -320,7 +321,7 @@ export const collectUnadoptedDocWarns = (active: string[]): string[] => {
   for (const f of active) {
     const base = basename(f);
     if (/^PLAN-.*\.md$/i.test(base)) continue;
-    const slug = base.replace(/\.md$/i, "").toLowerCase();
+    const slug = slugify(base);
     if (!slug) continue;
     const anchor = `plan:${slug}`;
     let text: string;
