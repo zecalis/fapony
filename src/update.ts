@@ -86,6 +86,24 @@ export interface UpdateDeps {
   exit?: (code: number) => never;
 }
 
+export interface UpdateArgs {
+  dryRun: boolean;
+  yes: boolean;
+}
+
+/** Parse `fapony update|upgrade` flags — exported for tests. */
+export function parseUpdateArgs(argv: string[] = []): UpdateArgs {
+  return {
+    dryRun: argv.includes("--dry-run"),
+    yes: argv.includes("--yes") || argv.includes("-y"),
+  };
+}
+
+/** Only an affirmative answer upgrades after the preview. */
+export function shouldUpgrade(answer: string): boolean {
+  return isAffirmative(answer);
+}
+
 /** Repo package.json version — exported for tests (reads the real ROOT). */
 export function readVersion(): string {
   const pkgPath = join(ROOT, "package.json");
@@ -134,7 +152,17 @@ function defaultPrompt(question: string, defaultVal?: string): Promise<string> {
   });
 }
 
-export async function cmdUpdate(deps: UpdateDeps = {}): Promise<void> {
+export async function cmdUpdate(
+  first: UpdateDeps | string[] = {},
+  second: string[] | UpdateDeps = [],
+): Promise<void> {
+  const deps: UpdateDeps = Array.isArray(first)
+    ? ((second as UpdateDeps) ?? {})
+    : first;
+  const argv: string[] = Array.isArray(first)
+    ? first
+    : ((second as string[]) ?? []);
+  const { dryRun, yes } = parseUpdateArgs(argv);
   const git = deps.git ?? defaultGit;
   const installFn = deps.install ?? defaultInstall;
   const refreshFn = deps.refresh ?? defaultRefreshPlugins;
@@ -162,20 +190,60 @@ export async function cmdUpdate(deps: UpdateDeps = {}): Promise<void> {
 
   // --- check uncommitted changes ---
   const dirty = git("status --porcelain");
-  if (parseDirtyLines(dirty).length > 0) {
+  const hasDirty = parseDirtyLines(dirty).length > 0;
+  if (hasDirty) {
     console.log("⚠  You have uncommitted changes in the fapony repo:\n");
     console.log(formatDirtyBlock(dirty));
     console.log();
-    const proceed = await promptFn(
-      "   Stash changes and pull anyway? (y/n)",
-      "n",
-    );
-    if (!shouldProceedAfterDirty(proceed)) {
-      console.log("\n  Update cancelled.");
+    if (dryRun) {
+      console.log("  dry run — nothing is stashed or pulled.");
+    } else {
+      const proceed = await promptFn(
+        "   Stash changes and pull anyway? (y/n)",
+        "n",
+      );
+      if (!shouldProceedAfterDirty(proceed)) {
+        console.log("\n  Update cancelled.");
+        return;
+      }
+      git("stash push -m 'fapony auto-stash before update'");
+      console.log("  ✓  Changes stashed.\n");
+    }
+  }
+
+  // --- preview incoming (fetch never writes the worktree) ---
+  gitQuiet("fetch --quiet");
+  const incoming = gitQuiet("log HEAD..@{u} --oneline --no-decorate");
+  const incomingLines = (incoming ?? "")
+    .split("\n")
+    .filter((l) => l.trim() !== "");
+  if (incomingLines.length > 0) {
+    console.log("\n  What's coming:\n");
+    for (const line of incomingLines.slice(0, 10)) {
+      console.log(`    ${line}`);
+    }
+    if (incomingLines.length > 10) {
+      console.log(`    ... and ${incomingLines.length - 10} more`);
+    }
+  }
+
+  if (dryRun) {
+    console.log("\n  dry run — nothing is pulled or written.");
+    if (incomingLines.length === 0 && !hasDirty) {
+      console.log("  ✓  Already up to date — no changes to preview.");
+    }
+    console.log("  To preview client changes too: fapony install --dry-run");
+    return;
+  }
+
+  // Single confirm before the pull — only when something is incoming.
+  // Up-to-date stays silent (no useless prompt); --yes skips for scripts.
+  if (incomingLines.length > 0 && !yes) {
+    const answer = await promptFn("   Upgrade fapony now? (y/n)", "Y");
+    if (!shouldUpgrade(answer)) {
+      console.log("\n  Upgrade cancelled.");
       return;
     }
-    git("stash push -m 'fapony auto-stash before update'");
-    console.log("  ✓  Changes stashed.\n");
   }
 
   // --- capture old version + recent commits ---
@@ -188,7 +256,7 @@ export async function cmdUpdate(deps: UpdateDeps = {}): Promise<void> {
   if (pullOutput === null) {
     console.error("\n❌ git pull failed (non-fast-forward?).");
     console.error("   Resolve manually, then run: fapony update");
-    if (dirty) {
+    if (hasDirty) {
       const popResult = gitQuiet("stash pop");
       if (popResult === null) {
         console.error(
@@ -209,7 +277,7 @@ export async function cmdUpdate(deps: UpdateDeps = {}): Promise<void> {
   const newSha = gitQuiet("rev-parse --short HEAD") ?? "unknown";
 
   // --- restore stashed changes ---
-  if (dirty) {
+  if (hasDirty) {
     const popResult = gitQuiet("stash pop");
     if (popResult === null) {
       console.log(
@@ -237,7 +305,7 @@ export async function cmdUpdate(deps: UpdateDeps = {}): Promise<void> {
   // --- recent commits since old SHA ---
   const logRange = gitQuiet(`log ${oldSha}..HEAD --oneline --no-decorate`);
   if (logRange) {
-    console.log("\n  Recent changes:\n");
+    console.log("\n  What's new:\n");
     for (const line of logRange.split("\n").slice(0, 10)) {
       console.log(`    ${line}`);
     }
@@ -258,12 +326,11 @@ export async function cmdUpdate(deps: UpdateDeps = {}): Promise<void> {
   // --- refresh generated plugin bodies (after deps — the fresh process needs them) ---
   refreshFn();
 
-  console.log(`
-  ┌──────────────────────────────────────────┐
-  │  Update complete!                        │
-  │                                          │
-  │  Version: ${newVersion.padEnd(31)}│
-  │  Run "bun run test" to verify.           │
-  └──────────────────────────────────────────┘
-`);
+  console.log(`\n  What's installed now:`);
+  console.log(`    ✓ fapony ${newVersion} @ ${newSha}`);
+  console.log(`    ✓ client plugins refreshed`);
+  console.log(
+    `    → run "fapony install --dry-run" to preview remaining client changes`,
+  );
+  console.log(`\n  ✓  Update complete! Run "bun run test" to verify.`);
 }

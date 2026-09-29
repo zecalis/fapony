@@ -7,10 +7,12 @@ import {
   formatDirtyBlock,
   isUpToDate,
   parseDirtyLines,
+  parseUpdateArgs,
   ROOT,
   readVersion,
   refreshArgv,
   shouldProceedAfterDirty,
+  shouldUpgrade,
   type UpdateDeps,
 } from "../src/update.js";
 
@@ -103,6 +105,31 @@ test("testIsUpToDate", () => {
   assert.equal(isUpToDate("abc123", "def456"), false);
   assert.equal(isUpToDate("unknown", "unknown"), true);
   console.log("  ✓ isUpToDate");
+});
+
+test("testParseUpdateArgs", () => {
+  assert.deepStrictEqual(parseUpdateArgs([]), { dryRun: false, yes: false });
+  assert.deepStrictEqual(parseUpdateArgs(["--dry-run"]), {
+    dryRun: true,
+    yes: false,
+  });
+  assert.deepStrictEqual(parseUpdateArgs(["--yes"]), {
+    dryRun: false,
+    yes: true,
+  });
+  assert.deepStrictEqual(parseUpdateArgs(["-y"]), {
+    dryRun: false,
+    yes: true,
+  });
+  console.log("  ✓ parseUpdateArgs");
+});
+
+test("testShouldUpgrade", () => {
+  assert.equal(shouldUpgrade("y"), true);
+  assert.equal(shouldUpgrade("Y"), true);
+  assert.equal(shouldUpgrade("n"), false);
+  assert.equal(shouldUpgrade(""), false);
+  console.log("  ✓ shouldUpgrade");
 });
 
 // --- cmdUpdate orchestration (seam-based, no real git/stdin/process) ---
@@ -351,7 +378,7 @@ test("testCmdUpdateLockfileTriggersInstall", async () => {
     });
   });
   assert.equal(installCalls, 1);
-  assert.ok(out.includes("Recent changes"), `got: ${out}`);
+  assert.ok(out.includes("What's new"), `got: ${out}`);
   assert.ok(out.includes("bbb111 new feature"), `got: ${out}`);
   assert.ok(out.includes("Dependencies updated"), `got: ${out}`);
   console.log("  ✓ cmdUpdate lockfile change runs install");
@@ -409,4 +436,59 @@ test("testCmdUpdateNoRefreshOnPullFail", async () => {
   });
   assert.equal(refreshCalls, 0, "a failed pull must not refresh plugins");
   console.log("  ✓ cmdUpdate pull-fail → no plugin refresh");
+});
+
+test("testCmdUpdateDryRunNoPull", async () => {
+  const { git, calls } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain": "",
+      "fetch --quiet": "",
+      "log HEAD..@{u} --oneline --no-decorate": "bbb111 incoming",
+    },
+    { shas: ["aaa111"] },
+  );
+  let prompted = 0;
+  const { out } = await captureOutput(async () => {
+    await cmdUpdate(["--dry-run"], {
+      git,
+      exit: testExit,
+      prompt: async () => {
+        prompted++;
+        return "y";
+      },
+    });
+  });
+  assert.equal(prompted, 0, "dry run must never prompt");
+  assert.ok(!calls.some((c) => c.startsWith("pull")), "dry run must not pull");
+  assert.ok(out.includes("dry run"), `got: ${out}`);
+  assert.ok(out.includes("bbb111 incoming"), `got: ${out}`);
+  console.log("  ✓ cmdUpdate dry-run previews without pulling");
+});
+
+test("testCmdUpdateConfirmDeclined", async () => {
+  const { git, calls } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain": "",
+      "fetch --quiet": "",
+      "log HEAD..@{u} --oneline --no-decorate": "bbb111 incoming",
+    },
+    { shas: ["aaa111"] },
+  );
+  let prompted = 0;
+  const { out } = await captureOutput(async () => {
+    await cmdUpdate({
+      git,
+      exit: testExit,
+      prompt: async () => {
+        prompted++;
+        return "n";
+      },
+    });
+  });
+  assert.equal(prompted, 1, "one confirm prompt for incoming changes");
+  assert.ok(!calls.some((c) => c.startsWith("pull")), "declined must not pull");
+  assert.ok(out.includes("Upgrade cancelled"), `got: ${out}`);
+  console.log("  ✓ cmdUpdate confirm declined cancels");
 });

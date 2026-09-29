@@ -84,16 +84,17 @@ export async function cmdInstall(
     return;
   }
 
-  // --- no platform: detect + prompt ---
+  // --- no platform: detect + list + prompt ---
   const detected = detectClients(deps);
   const found = detected.filter((d) => d.installed);
   const notFound = detected.filter((d) => !d.installed);
 
-  const foundNames = found.map((d) => d.platform).join(", ");
-  const notFoundNames = notFound.map((d) => d.platform).join(", ");
-  console.error(
-    `  detected: ${foundNames || "(none)"}${notFoundNames ? `        not found: ${notFoundNames}` : ""}`,
-  );
+  for (const d of found) {
+    console.error(`  ✓ ${d.platform} — ${d.why}`);
+  }
+  for (const d of notFound) {
+    console.error(`  · ${d.platform} — not found (${d.why})`);
+  }
   console.error(
     `  (not found = no config file yet — or, for claude, the CLI is not on PATH.`,
   );
@@ -110,10 +111,29 @@ export async function cmdInstall(
     return;
   }
 
+  // --dry-run: preview only — list above + per-client preview, never prompt.
+  // A dry run answers "what would change", so asking y/n here is the exact
+  // confusion this exists to fix.
+  if (dryRun) {
+    console.error("\n  dry run — nothing is written");
+    for (const client of found) {
+      console.error(`\n  ${client.platform}`);
+      installPlatform(client.platform, dryRun, deps, {
+        gitAutonomy,
+        pluginsOnly,
+      });
+    }
+    console.error(
+      `\n  dry run complete — re-run without --dry-run to apply (or add --all to skip the prompt)`,
+    );
+    return;
+  }
+
   // --all: install everything detected without prompting (works in CI/non-TTY).
   if (installAll) {
     console.error();
     for (const client of found) {
+      console.error(`${client.platform}`);
       installPlatform(client.platform, dryRun, deps, {
         gitAutonomy,
         pluginsOnly,
@@ -146,6 +166,7 @@ export async function cmdInstall(
     for (const client of found) {
       const answer = await askFn(`install into ${client.platform}?`, "Y");
       if (isAffirmative(answer)) {
+        console.error(`${client.platform}`);
         installPlatform(client.platform, dryRun, deps, {
           gitAutonomy,
           pluginsOnly,

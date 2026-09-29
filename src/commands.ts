@@ -91,6 +91,11 @@ export const COMMANDS: CommandInfo[] = [
   },
   { name: "setup", group: "setup", summary: "interactive wizard" },
   { name: "update", group: "setup", summary: "self-update via git pull" },
+  {
+    name: "upgrade",
+    group: "setup",
+    summary: "alias of update — preview, confirm, upgrade",
+  },
   { name: "telemetry", group: "setup", summary: "opt-in telemetry show/send" },
   {
     name: "stats",
