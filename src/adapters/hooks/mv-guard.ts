@@ -12,8 +12,12 @@
 // Claude-only: OpenCode's tool.execute.after fires after the mv already ran,
 // so there is nothing left to deny by the time that hook sees it.
 
+// Anchored to the start of the command or a shell segment (`; & |` newline):
+// an unanchored `mv` also matched grep/echo/commit-message prose that merely
+// spelled the pattern out, denying read-only commands. Only a command that
+// actually runs `mv`/`git mv` is denied.
 const MV_PATTERN =
-  /(?:git\s+)?mv\s+(?:-\S+\s+)*["']?([^"'\s]*\.fapony\/(?:[^/\s]+\/)*plan\/PLAN-[^"'\s]+\.md)["']?\s+["']?([^"'\s]*\bdone\/?)["']?/;
+  /(?:^|[;&|\n])\s*(?:git\s+)?mv\s+(?:-\S+\s+)*["']?([^"'\s]*\.fapony\/(?:[^/\s]+\/)*plan\/PLAN-[^"'\s]+\.md)["']?\s+["']?([^"'\s]*\bdone\/?)["']?/;
 
 /** Deny reason for a raw `git mv <plan>.md <...done/>` command, or null to allow. */
 export function mvGuardDecision(command: unknown): string | null {
