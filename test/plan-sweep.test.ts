@@ -340,6 +340,71 @@ test("testPlanSweepBlocksOnOpenIssuesOnly", () => {
   );
 });
 
+// Closing ceremony (PLAN-plan-adopt chunk 3): a sole-key `plan:<name>:chunk-N`
+// row names the plan with no files[] at all, and a files[] entry of the same
+// anchor-prefixed shape does too — both must block the sweep like a path row.
+test("testPlanSweepBlocksOnAnchorPrefixedRows", () => {
+  withTempRepo((dir) => {
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    mkdirSync(join(dir, ".fapony", "done"), { recursive: true });
+    const plan = (n: string) =>
+      writeFileSync(
+        join(dir, `.fapony/plan/${n}`),
+        `# ${n}\n> ✅ **shipped 2026-09-29** (abc1234)\n`,
+      );
+    plan("PLAN-a.md");
+    plan("PLAN-b.md");
+    plan("PLAN-c.md");
+    const sweep = (n: string) =>
+      Bun.spawnSync(["bun", FAPONY, "plan", "sweep", n, "--apply"], {
+        cwd: dir,
+        env: process.env, // the fake fael lives on the live PATH
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+    withFakeFael((setRows) => {
+      setRows([
+        {
+          id: "k1",
+          ts: "2026-09-29T00:00:00Z",
+          kind: "issue",
+          text: "handoff still open",
+          key: "plan:b:chunk-1",
+        },
+        {
+          id: "f1",
+          ts: "2026-09-29T00:00:00Z",
+          kind: "issue",
+          text: "handoff still open",
+          files: ["plan:c:chunk-2"],
+        },
+        {
+          id: "u1",
+          ts: "2026-09-29T00:00:00Z",
+          kind: "issue",
+          text: "some other plan",
+          key: "plan:unrelated:chunk-1",
+        },
+      ]);
+      const a = sweep("PLAN-a.md");
+      assert.equal(
+        a.exitCode,
+        0,
+        `an unrelated anchor must not block:\n${a.stderr}`,
+      );
+      const b = sweep("PLAN-b.md");
+      assert.equal(b.exitCode, 1, "a sole-key plan:b:chunk-1 row blocks");
+      assert.match(b.stderr.toString(), /open issue.*\n.*\[k1\]/);
+      const c = sweep("PLAN-c.md");
+      assert.equal(c.exitCode, 1, "a files[] plan:c:chunk-2 row blocks");
+      assert.match(c.stderr.toString(), /open issue.*\n.*\[f1\]/);
+    });
+  });
+  console.log(
+    "  ✓ plan-sweep --apply blocks on anchor-prefixed key/files rows",
+  );
+});
+
 // An editor/agent that pastes file:///abs/path links writes a link that works
 // on one machine only. plan check used to call it "broken … no such file in
 // plan/" even when the file existed; it now names the relative path to use.

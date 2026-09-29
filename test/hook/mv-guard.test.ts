@@ -25,6 +25,27 @@ test("testMvGuardDeniesPlanIntoDone", () => {
   console.log("  ✓ mvGuardDecision denies raw git mv of a plan into done/");
 });
 
+test("testMvGuardDeniesPlainMv", () => {
+  const reason = mvGuardDecision(
+    "mv .fapony/plan/PLAN-alerts.md .fapony/done/",
+  );
+  assert.ok(reason, "plain mv of a plan into done/ is denied");
+  assert.match(
+    reason ?? "",
+    /plan sweep --apply \.fapony\/plan\/PLAN-alerts\.md/,
+  );
+  assert.ok(
+    mvGuardDecision("mv -f .fapony/plan/PLAN-alerts.md .fapony/done/"),
+    "mv flags don't slip past the guard",
+  );
+  assert.equal(
+    mvGuardDecision("mv src/old.ts src/new.ts"),
+    null,
+    "non-plan plain mv is untouched",
+  );
+  console.log("  ✓ mvGuardDecision denies plain mv of a plan into done/");
+});
+
 test("testMvGuardAllowsEverythingElse", () => {
   assert.equal(mvGuardDecision(undefined), null);
   assert.equal(mvGuardDecision(""), null);
