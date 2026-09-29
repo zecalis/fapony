@@ -137,6 +137,29 @@ test("testPlanAdoptUniqueNameUnderCollision", () => {
   console.log("  ✓ plan adopt picks a unique name instead of overwriting");
 });
 
+// A shipped PLAN-<slug>.md in done/ must not make the same-named doc
+// unadoptable forever — done/ is part of the collision set, so the name rolls
+// to -2 like a live plan/ collision does.
+test("testPlanAdoptUniqueNameUnderDoneCollision", () => {
+  withFixture((dir) => {
+    const src = join(dir, "handoff.md");
+    writeFileSync(src, DOC);
+    mkdirSync(join(dir, ".fapony", "done"), { recursive: true });
+    writeFileSync(join(dir, ".fapony", "done", "PLAN-handoff.md"), "shipped");
+    withCwd(dir, () => {
+      initPlanStore(dir);
+      const { logs, code } = runAdopt([src]);
+      assert.equal(code, null, "a done/ collision must not refuse");
+      assert.ok(
+        existsSync(join(dir, ".fapony", "plan", "PLAN-handoff-2.md")),
+        "collision with done/ resolved to PLAN-handoff-2",
+      );
+      assert.match(logs, /PLAN-handoff-2\.md/);
+    });
+  });
+  console.log("  ✓ plan adopt rolls past a shipped done/ name too");
+});
+
 test("testPlanAdoptRefusesWithoutTarget", () => {
   withFixture((dir) => {
     withCwd(dir, () => {

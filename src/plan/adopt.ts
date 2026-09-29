@@ -85,17 +85,18 @@ export function cmdPlanAdopt(a: string[]): void {
     process.exit(1);
   }
   // Unique name: PLAN-<slug>.md, then -2, -3… (plan-seed's refusal is on a
-  // fixed name; adopt resolves its own, so the overlap check differs).
+  // fixed name; adopt resolves its own, so the overlap check differs). done/
+  // counts as a collision too: a shipped PLAN-<slug>.md would otherwise make a
+  // same-named doc unadoptable forever, so skip past it like a live one.
   const base = join(planBase, "plan");
   let name = slug;
-  for (let n = 2; existsSync(join(base, `PLAN-${name}.md`)); n++) {
+  for (
+    let n = 2;
+    existsSync(join(base, `PLAN-${name}.md`)) ||
+    existsSync(join(doneDir, `PLAN-${name}.md`));
+    n++
+  ) {
     name = `${slug}-${n}`;
-  }
-  if (existsSync(join(doneDir, `PLAN-${name}.md`))) {
-    console.error(
-      `plan adopt: PLAN-${name}.md is in done/ (shipped) — pick a distinguishing slug`,
-    );
-    process.exit(1);
   }
 
   const body = readFileSync(src, "utf8");
