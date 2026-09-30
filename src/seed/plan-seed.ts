@@ -49,6 +49,7 @@ import {
 } from "../core/config.js";
 import { readFaelLog, recentDecisions } from "../fael.js";
 import { extractExports } from "../map.js";
+import { findMentions } from "../plan/resolve.js";
 import { capLines, execGit, SIG_MAX } from "./primitives.js";
 
 // One chunk = one module's signatures — past ~40 lines a module is its own
@@ -112,38 +113,16 @@ function renderPriorArt(cwd: string, config: Config, roots: string[]): string {
   // at nothing.
   if (keys.length === 0) return placeholder;
 
-  const hits: { shipped: string; line: string }[] = [];
-  for (const dir of [doneDir(config), specDir()]) {
-    const abs = join(cwd, dir);
-    let names: string[];
-    try {
-      names = readdirSync(abs)
-        .filter((n) => n.endsWith(".md"))
-        .sort();
-    } catch {
-      continue; // dir missing — a repo without shipped plans yet
-    }
-    const label = dir.split("/").pop() ?? dir;
-    for (const n of names) {
-      let content: string;
-      try {
-        content = readFileSync(join(abs, n), "utf-8");
-      } catch {
-        continue;
-      }
-      if (!keys.some((k) => content.includes(k))) continue;
-      // The H1 usually repeats the filename ("PLAN-x.md — real title") and
-      // the filename is already the link text — keep only what it adds.
-      const title = (content.match(/^#\s+(.+)$/m)?.[1] ?? n)
-        .trim()
-        .replace(/^(?:PLAN|SPEC)-[\w.-]+\s+[—-]\s+/, "");
-      const shipped = content.match(/shipped\s+(\d{4}-\d{2}-\d{2})/)?.[1] ?? "";
-      hits.push({
-        shipped,
-        line: `- ✅ Already decided: [${n}](../${label}/${n}) — ${title}${shipped ? ` (shipped ${shipped})` : ""} \`(fapony plan-seed)\``,
-      });
-    }
-  }
+  const hits = findMentions(
+    [doneDir(config), specDir()].map((dir) => ({
+      abs: join(cwd, dir),
+      label: dir.split("/").pop() ?? dir,
+    })),
+    keys,
+  ).map((h) => ({
+    shipped: h.shipped,
+    line: `- ✅ Already decided: [${h.name}](../${h.label}/${h.name}) — ${h.title}${h.shipped ? ` (shipped ${h.shipped})` : ""} \`(fapony plan-seed)\``,
+  }));
   if (hits.length === 0) return placeholder;
   // Newest decision first — alphabetical order cuts by filename, which is the
   // one thing that says nothing about whether the decision still binds.

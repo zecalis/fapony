@@ -5,11 +5,15 @@ import { cmdPlanNext } from "./next.js";
 import { initPlanStore } from "./store.js";
 import { cmdPlanCheck, cmdPlanSweep } from "./sweep.js";
 
-const HELP = `usage: fapony plan [<PLAN.md>] | adopt <any-doc.md> | sweep [<PLAN.md>] [--apply] | check [--quiet]
+const HELP = `usage: fapony plan [<PLAN.md> | --files <path>] | adopt <any-doc.md> | sweep [<PLAN.md>] [--apply] | check [--quiet]
 
   fapony plan                 every active plan: progress + next unchecked chunk
   fapony plan <PLAN.md>       one plan: unchecked chunks, last-tick sha check,
-                              open fael rows about it (the chunk handoff notes)
+                              spec link, open fael rows about it (the handoffs)
+                              <PLAN.md> = file, path, name, plan:x, plan:x:chunk-3
+                              or a unique substring; ambiguous → list, exit 1
+  fapony plan --files a.ts[,b.ts]
+                              the plans + specs (plan/, done/, spec/) that mention them
   fapony plan adopt <doc.md>  bring someone else's doc into the plan flow:
                               unique PLAN name, frontmatter + TL;DR prepended,
                               doc body kept verbatim (sync-only, no chunking)
