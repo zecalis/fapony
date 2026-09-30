@@ -7,8 +7,7 @@
 [![npm](https://img.shields.io/npm/v/@zecalis%2Ffapony.svg)](https://www.npmjs.com/package/@zecalis/fapony) [![GitHub](https://img.shields.io/github/stars/zecalis/fapony.svg)](https://github.com/zecalis/fapony)
 
 **The dev workflow for writing code with agents** — plans cut into one-session chunks, lookups
-that cost a fraction of reading the files, convention debt you can count, and what it all cost in
-tokens. It is one developer's daily flow made into commands; adopting fapony means adopting that
+that cost a fraction of reading the files, and what it all cost in tokens. It is one developer's daily flow made into commands; adopting fapony means adopting that
 flow. Memory — decisions, bugs, notes — is [fael](https://github.com/zecalis/fael)'s, never
 fapony's.
 
@@ -17,14 +16,14 @@ its own session that opens with just the facts it needs and stops when the chunk
 
 ## The workflow — fapony + fael
 
-Two tools, one loop, no overlap. **fapony is the workflow** — plans cut into chunks, convention
-debt, cheap lookups, what it all cost. **[fael](https://github.com/zecalis/fael) is the memory** — the
+Two tools, one loop, no overlap. **fapony is the workflow** — plans cut into chunks, cheap
+lookups, what it all cost. **[fael](https://github.com/zecalis/fael) is the memory** — the
 decisions, bugs and notes the next session must see. Each is useful alone; together they close
 the loop: fapony says *what's next*, fael says *what the last session learned*.
 
 | | fapony — workflow | fael — memory |
 |---|---|---|
-| Owns | plans + chunk loop, `debt`, `lint-baseline`, `review-seed` / `analyze`, usage | decisions, issues, notes (`add` / `find` / `close`) |
+| Owns | plans + chunk loop, `lint-baseline`, `review-seed` / `analyze`, usage | decisions, issues, notes (`add` / `find` / `close`) |
 | Agent surface | plan-mv guard hook, skills — **no MCP server** | MCP tools + SessionStart / read / Stop hooks |
 | Writes | plan files, only when told (`plan sweep --apply`) | its log under `.fael/` in your repo |
 | Install | `npm i -g @zecalis/fapony && fapony install` | `npm i -g @zecalis/fael && fael install` |
@@ -56,13 +55,12 @@ flowchart LR
     AG[Antigravity] --> F
     F --> U[usage — tokens & cost]
     F --> P[plans — next chunk, sweep, check]
-    F --> D[debt — how far the move has gone]
     M[(fael — memory)] -. read-only .-> F
     CC & OC & CX --> M
 ```
 
 fapony is opinionated: the loop above is the product, and the commands exist to make each step
-cheap. Plans and debt are per-project (`fapony init`); usage needs no setup at all.
+cheap. Plans are per-project (`fapony init`); usage needs no setup at all.
 
 ## The pieces
 
@@ -74,10 +72,11 @@ session left in fael — instead of dragging the old transcript along.
 **Lookups instead of whole-file reads.** `fapony review-seed --files <f>` gives exports with line
 numbers and every importer for roughly a thirtieth of the tokens reading those files costs.
 
-**Convention debt.** `fapony debt` answers the question nothing else does: *we decided this six
+**Convention debt (frozen).** `fapony debt` answers the question nothing else does: *we decided this six
 months ago — how far along is the move?* ESLint says this line is wrong; nothing says 11 of 47
 files have migrated. Dead code and duplication it deliberately leaves to knip and friends —
-they already do that better.
+they already do that better. It is frozen: no repo we run declares a convention (checkers enforce them
+from day one), so it gets no new work and is slated for deletion on 2026-10-31 unless one does.
 
 ## What it cost — usage
 
@@ -138,10 +137,9 @@ fapony install --dry-run    # preview only — list only, never prompt
 #    claude/opencode also symlink skill/<name>/ into ~/.claude/skills — an existing
 #    skill of the same name is reported, never overwritten
 
-# 4. Turn on plans + debt (per project you want them in)
+# 4. Turn on plans (per project you want them in)
 fapony init /path/to/your-worktree
 #    creates .fapony/ — plan/ done/ spec/, evidence.json for `fapony report`,
-#    and conventions.json for `fapony debt` (shared rules: commit them),
 #    then offers to write the plan-loop rules into CLAUDE.md / AGENTS.md
 #    (none yet = AGENTS.md + a CLAUDE.md that imports it)
 fapony init /path/to/your-worktree --rules --yes   # repo already set up: rules only, no prompt
@@ -249,11 +247,10 @@ for each section the next chunk cites, so a session reads those lines, not the w
 ## CLI
 
 ```bash
-# core: plans + debt (memory — decisions, bugs, notes — lives in fael)
+# core: plans (memory — decisions, bugs, notes — lives in fael)
 fapony plan [<PLAN.md>]                    # active plans + next chunk; one plan: unchecked chunks + open fael rows
 fapony plan sweep [<PLAN.md>] [--apply]    # archive shipped plans into done/ + rewrite links
 fapony plan check [--quiet] [--fix]        # deps, broken links, ticked-chunk shas (exit 1 on issues); --fix repairs squashed ticks + moved-plan links
-fapony debt [--id a,b] [--where <path>]    # which files haven't migrated to a declared convention (live, read-only)
 fapony lint-baseline [--cmd ...] [--diff]  # separate "already red" from "I made it red"
 fapony digest [--since 7d|YYYY-MM-DD] [--format text|html] [--json] [--out FILE]  # single-page summary from what's on disk
 
@@ -271,6 +268,7 @@ fapony plan-seed <name> [--spec] [--scope <path>[,<path>]]...  # write PLAN (+SP
 fapony hook-mv-guard                       # deny raw git mv of plan files into done/
 
 # frozen ledger (reads history only — the grading tool left the MCP surface in 2026-09)
+fapony debt [--id a,b] [--where <path>]    # files not yet migrated to a declared convention (frozen — delete 2026-10-31)
 fapony stats [--mode verdict [--regime code|fix|review|plan|inquiry|test]]  # KPIs from old graded runs
 fapony report <run-id>                     # verification report for a run
 fapony report-web [file]                   # static HTML report page
@@ -303,7 +301,7 @@ default `~/.config/fapony/`).
 
 ## Scope
 
-**Supported:** cross-client usage on one yardstick · per-project plans + convention debt ·
+**Supported:** cross-client usage on one yardstick · per-project plans ·
 per-client hooks ([matrix above](#what-runs-where)) ·
 vendor-neutral skills (anything that reads stdin) · opt-in telemetry, off by default
 ([TELEMETRY.md](https://github.com/zecalis/fapony/blob/main/TELEMETRY.md) lists exactly what

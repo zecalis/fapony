@@ -133,11 +133,6 @@ So the seed buys you structure; the draft budget goes on judgment:
 - **Run the Phase −1 commands for facts** when the idea needs them, and put the numbers in the
   section they answer — a number you measured beats a number the seed guessed at.
 - **Signatures live in the SPEC chunks only.** Never paste them into plan §7 — link to the spec.
-- **Does this zone already owe a convention?** If the feature touches a directory, run
-  `fapony debt` once and read only the entries whose files overlap it. An open migration
-  ("36 files still throw raw errors") is a constraint for §4, not a side quest — a plan that
-  adds the 37th is how the debt got there. Nothing overlaps, or no `conventions.json`? Say
-  nothing and move on.
 - If the CLI is missing, skip silently and draft from scratch (Phase 2 as written) — never block
   on a missing tool.
 
