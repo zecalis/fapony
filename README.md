@@ -274,7 +274,7 @@ fapony report-web [file]                   # static HTML report page
 fapony init <path>                         # scaffold .fapony/ (plan/done/spec/evidence)
 fapony install [--all|--platform <name>|--dry-run]  # wire skills + plan-mv guard into clients
 fapony setup                               # interactive wizard: config + scaffold in one step
-fapony update [--dry-run|--yes]            # preview what's coming, confirm once, then upgrade
+fapony update [--dry-run|--yes]            # git checkouts only; npm/bun global: npm i -g @zecalis/fapony@latest && fapony install
 fapony upgrade                             # alias of update
 fapony telemetry show|send                 # opt-in only, default off — see TELEMETRY.md
 ```
