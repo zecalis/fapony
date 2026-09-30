@@ -247,7 +247,6 @@ function planTemplate(
   existingScope: string[],
   specLink: string | null,
 ): string {
-  const anchor = `plan:${name.toLowerCase()}`;
   return `---
 kind: unit
 status: active
@@ -284,11 +283,10 @@ _(agent fills in)_
 _(agent fills in)_
 
 ## 6. Steps (what in which order)
-**Chunks → sessions → PRs:** one session = one branch = one squash-merged PR, up to 3 chunks of this plan, one commit per chunk · a chunk gets its own PR when it changes a DB schema/migration or persisted format, touches auth/permissions/security or money logic, changes a public API/CLI contract, or needs a design review · close each chunk fully (tick + handoff note + commit) before the next; stop at anything that needs a human decision · a chunk that must build on an unmerged branch is stacked (PR base = that branch; once it merges: \`git rebase --onto origin/main <lower> <upper>\`).
+**Chunks → sessions → PRs, closing a step:** \`fapony plan PLAN-${name}.md\` prints the batching rule and how to close a chunk — the single source, nothing to copy here.
 
 1. _(agent fills in — each step must be verifiable)_
 
-**Closing a step:** tick TL;DR with sha (+ PR number once it exists) · \`git commit\` files only · \`fael add note "<what chunk N+1 must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note) · next opens with \`fapony plan PLAN-${name}.md\` (unchecked chunks + those notes).
 - [ ] handoff: the mem note is the handoff — this box only opts the plan into the Stop-hook check
 
 ## 7. Examples

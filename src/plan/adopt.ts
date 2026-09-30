@@ -54,8 +54,7 @@ agent keeps from it must be re-verified before it becomes a plan line; §1–§8
 and the chunk cut are the skill's job, nothing here is pre-ticked.
 
 ---
-**Handoff (fael):** \`fael add note "<what chunk 2 must know>" --files <f1>,${anchor} --key ${anchor}:handoff\` (one key per plan — each note supersedes the last)
-\`fapony plan PLAN-${name}.md\` lists the open handoff first.
+**Handoff (fael):** anchor \`${anchor}\` — \`fapony plan PLAN-${name}.md\` prints the open handoff and how to close a chunk.
 `;
 }
 

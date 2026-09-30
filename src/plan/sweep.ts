@@ -137,11 +137,18 @@ export const planLocation = (base: string): "plan" | "done" | null => {
   return null;
 };
 
-/** "chunk 2 — …" / "**chunk 2** — …" / "chunk-2" → "2"; the number a
- *  `plan:<name>:chunk-<n>` key carries. Digits only, so markdown around the
- *  label (`**`, `_`) never leaks into the key. */
+/** "chunk 2 — …" / "**chunk F3** — …" / "chunk-3b" → "2" / "F3" / "3b"; else the
+ *  short token before the dash ("u0 — …" → "u0"). The label a
+ *  `plan:<name>:chunk-<label>` key carries: real plans name chunks F3 / 3b / u0 /
+ *  m1 / D2, not only 1, 2, 3. A label holds a digit, so prose after "chunk"
+ *  never reads as one, and markdown around it (`**`, `_`) never leaks in. */
+const LABEL = "[A-Za-z]?\\d[A-Za-z0-9]*";
 export const chunkLabel = (item: string): string | null =>
-  /\bchunk[\s-]*(\d+)/i.exec(item)?.[1] ?? null;
+  new RegExp(`\\bchunk[\\s-]*\\**(${LABEL})`, "i").exec(item)?.[1] ??
+  new RegExp(
+    `^\\s*(?:[-*]\\s+(?:\\[[\\sxX]\\]\\s+)?)?[*_]*(${LABEL})[*_]*\\s+[—–]`,
+  ).exec(item)?.[1] ??
+  null;
 
 // checkbox lines of the first ## section (the TL;DR) only. Whole lines, so
 // callers can read the tick.
@@ -516,19 +523,24 @@ export const splitHandoffs = (
   planPath: string,
 ): { live: MemRow[]; stale: { row: MemRow; ref: string; n: string }[] } => {
   const { checked, unchecked } = firstSectionItems(planPath);
+  // F3 / 3b labels: only the leading number orders chunks, else 0
   const last = Math.max(
     0,
-    ...[...checked, ...unchecked].map((l) => Number(chunkLabel(l) ?? 0)),
+    ...[...checked, ...unchecked].map(
+      (l) => Number.parseInt(chunkLabel(l) ?? "", 10) || 0,
+    ),
   );
   const live: MemRow[] = [];
   const stale: { row: MemRow; ref: string; n: string }[] = [];
   for (const row of openHandoffRowsFor(planPath)) {
     const key =
-      /:chunk-(\d+)$/.exec(row.key ?? "")?.[1] ??
+      /:chunk-([a-z0-9]+)$/i.exec(row.key ?? "")?.[1] ??
       (row.key?.endsWith(":handoff") ? String(last + 1) : undefined);
     const n =
       key && Number(key) > last && !unchecked.length ? String(last) : key;
-    const line = n && checked.find((l) => chunkLabel(l) === n);
+    const line =
+      n &&
+      checked.find((l) => chunkLabel(l)?.toLowerCase() === n.toLowerCase());
     const r = line && checkTickedLine(line, root);
     if (
       n &&

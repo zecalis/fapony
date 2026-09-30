@@ -330,7 +330,7 @@ test("testPlanSeedConfigFallback", () => {
   );
 });
 
-test("testPlanSeedStepCloseCarriesPlanAnchor", () => {
+test("testPlanSeedStepSixPointsAtTheRuleInsteadOfCopyingIt", () => {
   withFixture((dir) => {
     withCwd(dir, () => {
       cmdPlanSeed(["Bar"]);
@@ -339,21 +339,21 @@ test("testPlanSeedStepCloseCarriesPlanAnchor", () => {
         "utf-8",
       );
       const s6 = body.slice(body.indexOf("## 6."), body.indexOf("## 7."));
-      // The handoff names this plan by its fael anchor, interpolated (never a
-      // placeholder a model has to reconstruct) and lowercase (fael's form).
-      // Not the path: it moves on sweep and .fapony/ is usually gitignored.
+      // A copy baked in at seed time drifts (4 variants across 21 plans):
+      // §6 names the command that prints the current rule, nothing more.
       assert.ok(
-        s6.includes("--files <f1,f2>,plan:bar --key plan:bar:handoff"),
-        "§6 must carry this plan's anchor + handoff key",
+        s6.includes("`fapony plan PLAN-Bar.md` prints"),
+        "§6 must point at the command that prints the rule",
       );
+      assert.ok(!s6.includes("up to 3 chunks"), "no batching rule in §6");
+      assert.ok(!s6.includes("fael add note"), "no closing recipe in §6");
       assert.ok(!s6.includes(".fapony/plan/PLAN-"), "no plan path in §6");
-      assert.ok(!s6.includes("<path"), "no path placeholder left in §6");
-      // The close sequence is spelled out as commands, not implied.
-      assert.ok(s6.includes("git commit"), "§6 names the commit step");
-      assert.ok(s6.includes("fael add note"), "§6 names the handoff-note step");
+      assert.ok(s6.includes("- [ ] handoff:"), "Stop-hook opt-in box stays");
     });
   });
-  console.log("  ✓ plan-seed: §6 close block carries the plan anchor");
+  console.log(
+    "  ✓ plan-seed: §6 points at `fapony plan`, carries no rule copy",
+  );
 });
 
 // Chunk 4 (PLAN-seed-and-surface): PLAN carries "Existing in scope" — one
