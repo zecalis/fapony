@@ -65,7 +65,7 @@ const closureHint = (checked: string[]): string | null => {
   if (missing.length)
     return `⚠ chunk ${label} is ticked but ${missing[0]} is not in git — nothing proves it closed`;
   if (diverged.length)
-    return `⚠ chunk ${label} is ticked but ${diverged[0]} is not on HEAD (rebased away?)`;
+    return `⚠ chunk ${label} is ticked but ${diverged[0]} is held by no branch (squashed, branch deleted?)`;
   if (!cited)
     return `⚠ chunk ${label} is ticked but cites no commit — nothing to verify it closed`;
   return null;
