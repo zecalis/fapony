@@ -343,8 +343,8 @@ test("testPlanSeedStepCloseCarriesPlanAnchor", () => {
       // placeholder a model has to reconstruct) and lowercase (fael's form).
       // Not the path: it moves on sweep and .fapony/ is usually gitignored.
       assert.ok(
-        s6.includes("--files <f1,f2>,plan:bar --key plan:bar:chunk-<N+1>"),
-        "§6 must carry this plan's anchor + chunk key",
+        s6.includes("--files <f1,f2>,plan:bar --key plan:bar:handoff"),
+        "§6 must carry this plan's anchor + handoff key",
       );
       assert.ok(!s6.includes(".fapony/plan/PLAN-"), "no plan path in §6");
       assert.ok(!s6.includes("<path"), "no path placeholder left in §6");

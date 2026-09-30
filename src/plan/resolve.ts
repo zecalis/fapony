@@ -31,7 +31,7 @@ const listDocs = (): { file: string; key: string }[] =>
     }
   });
 
-/** PLAN-x.md · PLAN-x · x · plan:x · plan:x:chunk-3 · any path · a unique
+/** PLAN-x.md · PLAN-x · x · plan:x · plan:x:handoff · plan:x:chunk-3 · any path · a unique
  *  substring. plan/ wins over done/ on an exact name. */
 export const resolvePlan = (arg: string): Resolved => {
   const direct = [resolve(arg), join(root, arg)].find(
@@ -39,7 +39,7 @@ export const resolvePlan = (arg: string): Resolved => {
   );
   if (direct) return { ok: true, file: direct, chunk: null };
 
-  const m = /^(?:plan:)?(.+?)(?::chunk-(\d+))?$/i.exec(arg.trim());
+  const m = /^(?:plan:)?(.+?)(?::chunk-(\d+)|:handoff)?$/i.exec(arg.trim());
   const name = (m?.[1] ?? arg)
     .replace(/\.md$/i, "")
     .replace(/^PLAN-/i, "")

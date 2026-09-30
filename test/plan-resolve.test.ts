@@ -72,6 +72,10 @@ test("testResolvePlanSpellings", () => {
     assert.equal(file("old"), ".fapony/done/PLAN-old.md");
     const c = resolvePlan("plan:fael-boundary:chunk-3");
     assert.ok(c.ok && c.chunk === "3");
+    const h = resolvePlan("plan:fael-boundary:handoff");
+    assert.ok(
+      h.ok && h.chunk === null && h.file.endsWith("PLAN-fael-boundary.md"),
+    );
     // ambiguous → candidates, no pick; unknown → empty
     assert.deepEqual(file("fael"), [
       "PLAN-fael-boundary.md",

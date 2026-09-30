@@ -38,7 +38,7 @@ flowchart TD
     P --> L["fapony review-seed --files …<br/>exports + importers instead of whole-file reads"]
     L --> E["edit<br/>fael read hook: rows about that file"]
     E --> C["tick the chunk with its sha → commit"]
-    C --> N["fael add note 'what chunk N+1 must know'<br/>--files f1,plan:x --key plan:x:chunk-N+1"]
+    C --> N["fael add note 'what chunk N+1 must know'<br/>--files f1,plan:x --key plan:x:handoff"]
     N -->|next chunk — ≤ 3 per session, none that needs its own PR| P
     N --> X([stop — don't drag the transcript along])
     X -->|next session| S
@@ -228,7 +228,7 @@ reading a single 100KB plan body into context:
 chunk's sha is really in git, and the open fael notes about it — the next chunk's first. Close a chunk with
 
 ```sh
-fael add note "<what chunk N+1 must know>" --files <f>,plan:calendar --key plan:calendar:chunk-<N+1>
+fael add note "<what chunk N+1 must know>" --files <f>,plan:calendar --key plan:calendar:handoff
 ```
 
 and the next session finds it. The `plan:<name>` anchor (`<name>` = `PLAN-<name>.md`, lowercase)

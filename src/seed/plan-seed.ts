@@ -288,7 +288,7 @@ _(agent fills in)_
 
 1. _(agent fills in — each step must be verifiable)_
 
-**Closing a step:** tick TL;DR with sha (+ PR number once it exists) · \`git commit\` files only · \`fael add note "<what chunk N+1 must know>" --files <f1,f2>,${anchor} --key ${anchor}:chunk-<N+1>\` · next opens with \`fapony plan PLAN-${name}.md\` (unchecked chunks + those notes).
+**Closing a step:** tick TL;DR with sha (+ PR number once it exists) · \`git commit\` files only · \`fael add note "<what chunk N+1 must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note) · next opens with \`fapony plan PLAN-${name}.md\` (unchecked chunks + those notes).
 - [ ] handoff: the mem note is the handoff — this box only opts the plan into the Stop-hook check
 
 ## 7. Examples
