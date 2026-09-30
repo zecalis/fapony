@@ -5,14 +5,11 @@ import { join } from "node:path";
 import {
   cmdUpdate,
   formatDirtyBlock,
-  isUpToDate,
   parseDirtyLines,
   parseUpdateArgs,
   ROOT,
   readVersion,
   refreshArgv,
-  shouldProceedAfterDirty,
-  shouldUpgrade,
   type UpdateDeps,
 } from "../src/update.js";
 
@@ -90,23 +87,6 @@ test("testFormatDirtyBlock", () => {
   console.log("  ✓ formatDirtyBlock");
 });
 
-test("testShouldProceedAfterDirty", () => {
-  assert.equal(shouldProceedAfterDirty("y"), true);
-  assert.equal(shouldProceedAfterDirty("yes"), true);
-  assert.equal(shouldProceedAfterDirty("Y"), true);
-  assert.equal(shouldProceedAfterDirty("n"), false);
-  assert.equal(shouldProceedAfterDirty("no"), false);
-  assert.equal(shouldProceedAfterDirty(""), false);
-  console.log("  ✓ shouldProceedAfterDirty");
-});
-
-test("testIsUpToDate", () => {
-  assert.equal(isUpToDate("abc123", "abc123"), true);
-  assert.equal(isUpToDate("abc123", "def456"), false);
-  assert.equal(isUpToDate("unknown", "unknown"), true);
-  console.log("  ✓ isUpToDate");
-});
-
 test("testParseUpdateArgs", () => {
   assert.deepStrictEqual(parseUpdateArgs([]), { dryRun: false, yes: false });
   assert.deepStrictEqual(parseUpdateArgs(["--dry-run"]), {
@@ -122,14 +102,6 @@ test("testParseUpdateArgs", () => {
     yes: true,
   });
   console.log("  ✓ parseUpdateArgs");
-});
-
-test("testShouldUpgrade", () => {
-  assert.equal(shouldUpgrade("y"), true);
-  assert.equal(shouldUpgrade("Y"), true);
-  assert.equal(shouldUpgrade("n"), false);
-  assert.equal(shouldUpgrade(""), false);
-  console.log("  ✓ shouldUpgrade");
 });
 
 // --- cmdUpdate orchestration (seam-based, no real git/stdin/process) ---
@@ -202,7 +174,7 @@ test("testCmdUpdateNotARepo", async () => {
   let code: number | null = null;
   const { err } = await captureOutput(async () => {
     try {
-      await cmdUpdate({ git, exit: testExit });
+      await cmdUpdate([], { git, exit: testExit });
     } catch (e) {
       code = (e as TestExit).code;
     }
@@ -215,23 +187,22 @@ test("testCmdUpdateNotARepo", async () => {
 test("testCmdUpdateDirtyDeclined", async () => {
   const { git, calls } = mapGit({
     "rev-parse --is-inside-work-tree": "true",
-    "status --porcelain": " M a.ts",
+    "status --porcelain --untracked-files=no": " M a.ts",
+    "log*": "bbb111 incoming",
   });
+  const answers = ["y", "n"]; // yes to the upgrade, no to stashing
   let prompted = 0;
   const { out } = await captureOutput(async () => {
-    await cmdUpdate({
+    await cmdUpdate([], {
       git,
       exit: testExit,
       isTTY: true,
-      prompt: async () => {
-        prompted++;
-        return "n";
-      },
+      prompt: async () => answers[prompted++] ?? "n",
     });
   });
-  assert.equal(prompted, 1);
+  assert.equal(prompted, 2);
   assert.ok(out.includes("Update cancelled"), `got: ${out}`);
-  assert.ok(!calls.some((c) => c.startsWith("pull")), "pull must not run");
+  assert.ok(!calls.some((c) => c.startsWith("merge")), "pull must not run");
   assert.ok(
     !calls.some((c) => c.startsWith("stash push")),
     "declined dirty prompt must not stash",
@@ -243,9 +214,9 @@ test("testCmdUpdateDirtyPullOk", async () => {
   const { git } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": " M a.ts",
+      "status --porcelain --untracked-files=no": " M a.ts",
       "stash push -m 'fapony auto-stash before update'": "",
-      "pull --ff-only": "",
+      "merge --ff-only @{u}": "",
       "stash pop": "",
       "log*": "bbb111 feat",
       "diff --name-only HEAD@{1} HEAD -- bun.lock": "",
@@ -255,7 +226,7 @@ test("testCmdUpdateDirtyPullOk", async () => {
   let installCalls = 0;
   let refreshCalls = 0;
   const { out } = await captureOutput(async () => {
-    await cmdUpdate({
+    await cmdUpdate([], {
       git,
       exit: testExit,
       isTTY: true,
@@ -264,6 +235,7 @@ test("testCmdUpdateDirtyPullOk", async () => {
       },
       refresh: () => {
         refreshCalls++;
+        return true;
       },
       prompt: async () => "y",
     });
@@ -279,9 +251,10 @@ test("testCmdUpdatePullFailPopOk", async () => {
   const { git } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": " M a.ts",
+      "log*": "bbb111 incoming",
+      "status --porcelain --untracked-files=no": " M a.ts",
       "stash push -m 'fapony auto-stash before update'": "",
-      "pull --ff-only": new Error("non-fast-forward"),
+      "merge --ff-only @{u}": new Error("non-fast-forward"),
       "stash pop": "",
     },
     { shas: ["aaa111"] },
@@ -289,7 +262,7 @@ test("testCmdUpdatePullFailPopOk", async () => {
   let code: number | null = null;
   const { err } = await captureOutput(async () => {
     try {
-      await cmdUpdate({
+      await cmdUpdate([], {
         git,
         exit: testExit,
         isTTY: true,
@@ -308,15 +281,16 @@ test("testCmdUpdateNonTTYDirtyFailsFast", async () => {
   const { git, calls } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": " M a.ts",
-      "pull --ff-only": "",
+      "log*": "bbb111 incoming",
+      "status --porcelain --untracked-files=no": " M a.ts",
+      "merge --ff-only @{u}": "",
     },
     { shas: ["aaa111"] },
   );
   let code: number | null = null;
   const { err } = await captureOutput(async () => {
     try {
-      await cmdUpdate({
+      await cmdUpdate([], {
         git,
         exit: testExit,
         isTTY: false,
@@ -330,7 +304,7 @@ test("testCmdUpdateNonTTYDirtyFailsFast", async () => {
   });
   assert.equal(code, 1);
   assert.ok(err.includes("no terminal"), `got: ${err}`);
-  assert.ok(!calls.some((c) => c.startsWith("pull")), "must not pull");
+  assert.ok(!calls.some((c) => c.startsWith("merge")), "must not pull");
   console.log("  ✓ cmdUpdate non-TTY + dirty → fail fast, no hang, no pull");
 });
 
@@ -338,10 +312,10 @@ test("testCmdUpdateYesAutoStashes", async () => {
   const { git, calls } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": " M a.ts",
+      "status --porcelain --untracked-files=no": " M a.ts",
       "log HEAD..@{u} --oneline --no-decorate": "bbb111 incoming",
       "stash push -m 'fapony auto-stash before update'": "",
-      "pull --ff-only": "",
+      "merge --ff-only @{u}": "",
       "stash pop": "",
       "diff --name-only HEAD@{1} HEAD -- bun.lock": "",
     },
@@ -352,7 +326,7 @@ test("testCmdUpdateYesAutoStashes", async () => {
       git,
       exit: testExit,
       isTTY: false,
-      refresh: () => {},
+      refresh: () => true,
       prompt: async () => {
         throw new Error("--yes must not prompt");
       },
@@ -363,7 +337,7 @@ test("testCmdUpdateYesAutoStashes", async () => {
     "clean script run should auto-stash",
   );
   assert.ok(
-    calls.some((c) => c.startsWith("pull")),
+    calls.some((c) => c.startsWith("merge")),
     "should pull",
   );
   assert.ok(out.includes("stashed (--yes)"), `got: ${out}`);
@@ -376,13 +350,13 @@ test("testCmdUpdateDeclineConfirmLeavesTreeUntouched", async () => {
   const { git, calls } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": " M a.ts",
+      "status --porcelain --untracked-files=no": " M a.ts",
       "log HEAD..@{u} --oneline --no-decorate": "bbb111 incoming",
     },
     { shas: ["aaa111"] },
   );
   const { out } = await captureOutput(async () => {
-    await cmdUpdate({
+    await cmdUpdate([], {
       git,
       exit: testExit,
       isTTY: true,
@@ -394,7 +368,7 @@ test("testCmdUpdateDeclineConfirmLeavesTreeUntouched", async () => {
     !calls.some((c) => c.startsWith("stash push")),
     "confirm declined before stash — nothing stranded",
   );
-  assert.ok(!calls.some((c) => c.startsWith("pull")), "must not pull");
+  assert.ok(!calls.some((c) => c.startsWith("merge")), "must not pull");
   console.log("  ✓ cmdUpdate declining confirm never stashes");
 });
 
@@ -404,7 +378,7 @@ test("testCmdUpdateDetachedUpstreamFallback", async () => {
   const { git } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": "",
+      "status --porcelain --untracked-files=no": "",
       "log HEAD..@{u} --oneline --no-decorate": new Error(
         "no upstream configured",
       ),
@@ -432,7 +406,7 @@ test("testCmdUpdateNoUpstreamDryRunSaysSo", async () => {
   const { git } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": "",
+      "status --porcelain --untracked-files=no": "",
       "log*": new Error("no ref"),
     },
     { shas: ["aaa111"] },
@@ -449,9 +423,10 @@ test("testCmdUpdatePullFailPopFail", async () => {
   const { git } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": " M a.ts",
+      "log*": "bbb111 incoming",
+      "status --porcelain --untracked-files=no": " M a.ts",
       "stash push -m 'fapony auto-stash before update'": "",
-      "pull --ff-only": new Error("non-fast-forward"),
+      "merge --ff-only @{u}": new Error("non-fast-forward"),
       "stash pop": new Error("conflict"),
     },
     { shas: ["aaa111"] },
@@ -459,7 +434,7 @@ test("testCmdUpdatePullFailPopFail", async () => {
   let code: number | null = null;
   const { err } = await captureOutput(async () => {
     try {
-      await cmdUpdate({
+      await cmdUpdate([], {
         git,
         exit: testExit,
         isTTY: true,
@@ -476,13 +451,12 @@ test("testCmdUpdatePullFailPopFail", async () => {
 });
 
 test("testCmdUpdateAlreadyUpToDate", async () => {
-  const { git } = mapGit(
+  const { git, calls } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": "",
-      "pull --ff-only": "",
+      "status --porcelain --untracked-files=no": "",
     },
-    { shas: ["aaa111", "aaa111"] },
+    { shas: ["aaa111"] },
   );
   let prompted = 0;
   let refreshCalls = 0;
@@ -491,6 +465,7 @@ test("testCmdUpdateAlreadyUpToDate", async () => {
     exit: testExit,
     refresh: () => {
       refreshCalls++;
+      return true;
     },
     prompt: async () => {
       prompted++;
@@ -498,9 +473,10 @@ test("testCmdUpdateAlreadyUpToDate", async () => {
     },
   };
   const { out } = await captureOutput(async () => {
-    await cmdUpdate(deps);
+    await cmdUpdate([], deps);
   });
   assert.equal(prompted, 0);
+  assert.ok(!calls.some((c) => c.startsWith("merge")), "nothing to merge");
   assert.equal(
     refreshCalls,
     1,
@@ -514,8 +490,8 @@ test("testCmdUpdateLockfileTriggersInstall", async () => {
   const { git } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": "",
-      "pull --ff-only": "",
+      "status --porcelain --untracked-files=no": "",
+      "merge --ff-only @{u}": "",
       "log*": "bbb111 new feature",
       "diff --name-only HEAD@{1} HEAD -- bun.lock": "bun.lock",
     },
@@ -523,13 +499,13 @@ test("testCmdUpdateLockfileTriggersInstall", async () => {
   );
   let installCalls = 0;
   const { out } = await captureOutput(async () => {
-    await cmdUpdate({
+    await cmdUpdate([], {
       git,
       exit: testExit,
       install: () => {
         installCalls++;
       },
-      refresh: () => {},
+      refresh: () => true,
       prompt: async () => "y",
     });
   });
@@ -544,21 +520,21 @@ test("testCmdUpdateInstallFailureWarns", async () => {
   const { git } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": "",
-      "pull --ff-only": "",
-      "log*": "",
+      "status --porcelain --untracked-files=no": "",
+      "merge --ff-only @{u}": "",
+      "log*": "bbb111 incoming",
       "diff --name-only HEAD@{1} HEAD -- bun.lock": "bun.lock",
     },
     { shas: ["aaa111", "bbb111"] },
   );
   const { out } = await captureOutput(async () => {
-    await cmdUpdate({
+    await cmdUpdate([], {
       git,
       exit: testExit,
       install: () => {
         throw new Error("network down");
       },
-      refresh: () => {},
+      refresh: () => true,
       prompt: async () => "y",
     });
   });
@@ -570,19 +546,21 @@ test("testCmdUpdateNoRefreshOnPullFail", async () => {
   const { git } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": "",
-      "pull --ff-only": new Error("non-fast-forward"),
+      "log*": "bbb111 incoming",
+      "status --porcelain --untracked-files=no": "",
+      "merge --ff-only @{u}": new Error("non-fast-forward"),
     },
     { shas: ["aaa111"] },
   );
   let refreshCalls = 0;
   await captureOutput(async () => {
     try {
-      await cmdUpdate({
+      await cmdUpdate([], {
         git,
         exit: testExit,
         refresh: () => {
           refreshCalls++;
+          return true;
         },
         prompt: async () => "y",
       });
@@ -598,7 +576,7 @@ test("testCmdUpdateDryRunNoPull", async () => {
   const { git, calls } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": "",
+      "status --porcelain --untracked-files=no": "",
       "fetch --quiet": "",
       "log HEAD..@{u} --oneline --no-decorate": "bbb111 incoming",
     },
@@ -616,8 +594,8 @@ test("testCmdUpdateDryRunNoPull", async () => {
     });
   });
   assert.equal(prompted, 0, "dry run must never prompt");
-  assert.ok(!calls.some((c) => c.startsWith("pull")), "dry run must not pull");
-  assert.ok(out.includes("dry run"), `got: ${out}`);
+  assert.ok(!calls.some((c) => c.startsWith("merge")), "dry run must not pull");
+  assert.ok(out.includes("checkout is untouched"), `got: ${out}`);
   assert.ok(out.includes("bbb111 incoming"), `got: ${out}`);
   console.log("  ✓ cmdUpdate dry-run previews without pulling");
 });
@@ -626,7 +604,7 @@ test("testCmdUpdateConfirmDeclined", async () => {
   const { git, calls } = mapGit(
     {
       "rev-parse --is-inside-work-tree": "true",
-      "status --porcelain": "",
+      "status --porcelain --untracked-files=no": "",
       "fetch --quiet": "",
       "log HEAD..@{u} --oneline --no-decorate": "bbb111 incoming",
     },
@@ -634,7 +612,7 @@ test("testCmdUpdateConfirmDeclined", async () => {
   );
   let prompted = 0;
   const { out } = await captureOutput(async () => {
-    await cmdUpdate({
+    await cmdUpdate([], {
       git,
       exit: testExit,
       isTTY: true,
@@ -645,7 +623,105 @@ test("testCmdUpdateConfirmDeclined", async () => {
     });
   });
   assert.equal(prompted, 1, "one confirm prompt for incoming changes");
-  assert.ok(!calls.some((c) => c.startsWith("pull")), "declined must not pull");
+  assert.ok(
+    !calls.some((c) => c.startsWith("merge")),
+    "declined must not pull",
+  );
   assert.ok(out.includes("Upgrade cancelled"), `got: ${out}`);
   console.log("  ✓ cmdUpdate confirm declined cancels");
+});
+
+test("testCmdUpdateDetachedMergesPreviewedRef", async () => {
+  // `pull` fails on a detached HEAD; the update must fast-forward to the
+  // exact ref the preview showed, with no second fetch.
+  const { git, calls } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain --untracked-files=no": "",
+      "log HEAD..@{u} --oneline --no-decorate": new Error("no upstream"),
+      "log HEAD..origin/main --oneline --no-decorate": "ccc333 fallback",
+      "log aaa111..HEAD --oneline --no-decorate": "ccc333 fallback",
+    },
+    { shas: ["aaa111", "ccc333"] },
+  );
+  const { out } = await captureOutput(async () => {
+    await cmdUpdate(["--yes"], { git, exit: testExit, refresh: () => false });
+  });
+  assert.ok(calls.includes("merge --ff-only origin/main"), `calls: ${calls}`);
+  assert.ok(!calls.some((c) => c.startsWith("pull")), "never pull");
+  assert.equal(calls.filter((c) => c.startsWith("fetch")).length, 1);
+  assert.ok(out.includes("Updated"), `got: ${out}`);
+  console.log("  ✓ cmdUpdate detached HEAD merges the previewed ref");
+});
+
+test("testCmdUpdateNonTTYDirtyNothingIncoming", async () => {
+  // cron on a current checkout with local edits: a no-op, not an exit 1.
+  const { git, calls } = mapGit(
+    {
+      "rev-parse --is-inside-work-tree": "true",
+      "status --porcelain --untracked-files=no": " M a.ts",
+    },
+    { shas: ["aaa111"] },
+  );
+  const { out } = await captureOutput(async () => {
+    await cmdUpdate([], {
+      git,
+      exit: testExit,
+      isTTY: false,
+      refresh: () => false,
+      prompt: async () => {
+        throw new Error("must not prompt");
+      },
+    });
+  });
+  assert.ok(out.includes("Already up to date"), `got: ${out}`);
+  assert.ok(!calls.some((c) => c.startsWith("stash")), "nothing to stash for");
+  console.log("  ✓ cmdUpdate non-TTY + dirty + nothing incoming → no-op");
+});
+
+test("testCmdUpdateFetchFailExits", async () => {
+  // Stale refs would preview "up to date" and skip the confirm.
+  for (const argv of [[], ["--dry-run"]]) {
+    const { git, calls } = mapGit(
+      {
+        "rev-parse --is-inside-work-tree": "true",
+        "fetch --quiet": new Error("offline"),
+      },
+      { shas: ["aaa111"] },
+    );
+    let code: number | null = null;
+    const { out, err } = await captureOutput(async () => {
+      try {
+        await cmdUpdate(argv, { git, exit: testExit });
+      } catch (e) {
+        code = (e as TestExit).code;
+      }
+    });
+    assert.equal(code, 1, `argv ${argv}`);
+    assert.ok(err.includes("fetch failed"), `got: ${err}`);
+    assert.ok(!out.includes("Already up to date"), `got: ${out}`);
+    assert.ok(!calls.some((c) => c.startsWith("merge")), "must not merge");
+  }
+  console.log("  ✓ cmdUpdate fetch failure exits before previewing");
+});
+
+test("testCmdUpdateSummaryReflectsRefresh", async () => {
+  for (const refreshed of [true, false]) {
+    const { git } = mapGit(
+      {
+        "rev-parse --is-inside-work-tree": "true",
+        "log*": "bbb111 incoming",
+      },
+      { shas: ["aaa111", "bbb111"] },
+    );
+    const { out } = await captureOutput(async () => {
+      await cmdUpdate(["--yes"], {
+        git,
+        exit: testExit,
+        refresh: () => refreshed,
+      });
+    });
+    assert.equal(out.includes("client plugins refreshed"), refreshed, out);
+  }
+  console.log("  ✓ cmdUpdate summary only claims a refresh that happened");
 });

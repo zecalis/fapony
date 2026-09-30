@@ -1,4 +1,4 @@
-// src/update.ts — self-update via git pull.
+// src/update.ts — self-update: fetch, preview, then fast-forward to the previewed ref.
 // ROOT must be the repo root: import.meta.dir is src/, one level below it.
 // Shows old → new version, recent commits, and warns if uncommitted changes.
 
@@ -48,7 +48,7 @@ export function refreshArgv(files: string[]): string[] {
 }
 
 /**
- * Refresh OpenCode's generated plugin bodies after the pull.
+ * Refresh OpenCode's generated plugin bodies after the update.
  *
  * OpenCode is the only client whose hooks are baked files — every other client
  * writes a `fapony hook-*` command resolved at run time, so a pull alone keeps
@@ -59,10 +59,10 @@ export function refreshArgv(files: string[]): string[] {
  * the refresh never reads or writes opencode.json or the skills symlink.
  * Best-effort: a refresh must never fail an update.
  */
-function defaultRefreshPlugins(): void {
+function defaultRefreshPlugins(): boolean {
   const getHome = (): string => homedir();
   const files = opencodePluginFiles(getHome);
-  if (files.length === 0) return;
+  if (files.length === 0) return false;
   console.log("\n  Refreshing OpenCode plugins...");
   const r = spawnSync(process.execPath, refreshArgv(files), {
     stdio: "pipe",
@@ -72,7 +72,9 @@ function defaultRefreshPlugins(): void {
     console.log(
       "  ⚠  plugin refresh failed — run manually: fapony install --platform opencode --plugins-only",
     );
+    return false;
   }
+  return true;
 }
 
 /** Minimal seam for cmdUpdate — git runner (map args→result, throws on failure),
@@ -81,7 +83,8 @@ function defaultRefreshPlugins(): void {
 export interface UpdateDeps {
   git?: (args: string) => string;
   install?: () => void;
-  refresh?: () => void;
+  /** True only when plugins were actually refreshed (false = none installed, or failed). */
+  refresh?: () => boolean;
   prompt?: (question: string, defaultVal?: string) => Promise<string>;
   exit?: (code: number) => never;
   /** Whether a human can answer a prompt — defaults to process.stdin.isTTY.
@@ -100,11 +103,6 @@ export function parseUpdateArgs(argv: string[] = []): UpdateArgs {
     dryRun: argv.includes("--dry-run"),
     yes: argv.includes("--yes") || argv.includes("-y"),
   };
-}
-
-/** Only an affirmative answer upgrades after the preview. */
-export function shouldUpgrade(answer: string): boolean {
-  return isAffirmative(answer);
 }
 
 /** Repo package.json version — exported for tests (reads the real ROOT). */
@@ -131,16 +129,6 @@ export function formatDirtyBlock(porcelain: string): string {
     .join("\n");
 }
 
-/** Only an affirmative answer proceeds past the dirty-tree warning. */
-export function shouldProceedAfterDirty(answer: string): boolean {
-  return isAffirmative(answer);
-}
-
-/** Same SHA before/after pull = already up to date. */
-export function isUpToDate(oldSha: string, newSha: string): boolean {
-  return oldSha === newSha;
-}
-
 function defaultPrompt(question: string, defaultVal?: string): Promise<string> {
   return new Promise((resolve) => {
     const rl = createInterface({
@@ -156,15 +144,9 @@ function defaultPrompt(question: string, defaultVal?: string): Promise<string> {
 }
 
 export async function cmdUpdate(
-  first: UpdateDeps | string[] = {},
-  second: string[] | UpdateDeps = [],
+  argv: string[] = [],
+  deps: UpdateDeps = {},
 ): Promise<void> {
-  const deps: UpdateDeps = Array.isArray(first)
-    ? ((second as UpdateDeps) ?? {})
-    : first;
-  const argv: string[] = Array.isArray(first)
-    ? first
-    : ((second as string[]) ?? []);
   const { dryRun, yes } = parseUpdateArgs(argv);
   const git = deps.git ?? defaultGit;
   const installFn = deps.install ?? defaultInstall;
@@ -193,7 +175,10 @@ export async function cmdUpdate(
   }
 
   // --- check uncommitted changes (read-only; stashing waits for the confirm) ---
-  const dirty = git("status --porcelain");
+  // Tracked only: `stash push` leaves untracked files alone, so counting them
+  // made a stash that was never created and a `stash pop` of someone else's.
+  // An untracked file in the way of the merge makes git refuse, not clobber.
+  const dirty = git("status --porcelain --untracked-files=no");
   const hasDirty = parseDirtyLines(dirty).length > 0;
   if (hasDirty) {
     console.log("⚠  You have uncommitted changes in the fapony repo:\n");
@@ -209,7 +194,13 @@ export async function cmdUpdate(
   // `@{u}` is unset on a detached HEAD — this repo's own worktree topology —
   // so fall back to the remote-tracking branch. Reading "no upstream" as
   // "nothing incoming" turned the whole preview into a silent no-op.
-  gitQuiet("fetch --quiet");
+  // A failed fetch leaves stale refs, so a preview from them would lie.
+  if (gitQuiet("fetch --quiet") === null) {
+    console.error(
+      "❌ git fetch failed (offline?) — cannot preview; nothing changed.",
+    );
+    exitFn(1);
+  }
   const upstreamRefs = ["@{u}"];
   const remoteHead = gitQuiet("symbolic-ref --short refs/remotes/origin/HEAD");
   if (remoteHead) upstreamRefs.push(remoteHead);
@@ -234,10 +225,12 @@ export async function cmdUpdate(
   }
 
   if (dryRun) {
-    console.log("\n  dry run — nothing is pulled or written.");
+    console.log(
+      "\n  dry run — fetched remote refs only; your checkout is untouched.",
+    );
     if (comparedRef === null) {
       console.log(
-        "  ?  No upstream ref to compare against — pull will decide.",
+        "  ?  No upstream ref to compare against — update cannot run.",
       );
     } else if (incomingLines.length === 0) {
       console.log("  ✓  Already up to date — no changes to preview.");
@@ -246,20 +239,38 @@ export async function cmdUpdate(
     return;
   }
 
+  if (comparedRef === null) {
+    console.error(
+      "❌ no upstream ref (tried @{u}, origin/HEAD, origin/main, origin/master) — cannot update.",
+    );
+    exitFn(1);
+  }
+  // exitFn returns never, but its type is inferred, so TS won't narrow on it.
+  const targetRef = comparedRef as string;
+
+  // Nothing incoming: no stash, no merge. The repo being current says nothing
+  // about the generated plugin bodies — a user who pulled by hand, or installed
+  // before the template changed, is exactly who needs the refresh.
+  if (incomingLines.length === 0) {
+    console.log(`\n  ✓  Already up to date (${oldVersion} @ ${oldSha}).`);
+    refreshFn();
+    return;
+  }
+
   // --- confirm before anything mutates ---
   // This runs before the dirty-tree stash on purpose: asking to stash first
   // and then asking again stranded the auto-stash when the second answer was
   // "no". Non-TTY (cron/CI) proceeds like the pre-preview behaviour instead of
   // hanging on a readline that never returns; --yes skips the ask for scripts.
-  if (incomingLines.length > 0 && !yes && isTTY) {
+  if (!yes && isTTY) {
     const answer = await promptFn("   Upgrade fapony now? (y/n)", "Y");
-    if (!shouldUpgrade(answer)) {
+    if (!isAffirmative(answer)) {
       console.log("\n  Upgrade cancelled.");
       return;
     }
   }
 
-  // --- stash only now that we are committed to pulling ---
+  // --- stash only now that we are committed to updating ---
   if (hasDirty) {
     if (yes) {
       git("stash push -m 'fapony auto-stash before update'");
@@ -271,10 +282,10 @@ export async function cmdUpdate(
       exitFn(1);
     } else {
       const proceed = await promptFn(
-        "   Stash changes and pull anyway? (y/n)",
+        "   Stash changes and update anyway? (y/n)",
         "n",
       );
-      if (!shouldProceedAfterDirty(proceed)) {
+      if (!isAffirmative(proceed)) {
         console.log("\n  Update cancelled.");
         return;
       }
@@ -283,11 +294,12 @@ export async function cmdUpdate(
     }
   }
 
-  // --- pull ---
-  console.log("  Pulling latest changes...");
-  const pullOutput = gitQuiet("pull --ff-only");
-  if (pullOutput === null) {
-    console.error("\n❌ git pull failed (non-fast-forward?).");
+  // --- fast-forward to exactly what was previewed ---
+  // Not `pull`: it fetches again (unpreviewed commits) and fails outright on
+  // the detached HEAD / no-upstream states the preview falls back for.
+  console.log(`  Fast-forwarding to ${targetRef}...`);
+  if (gitQuiet(`merge --ff-only ${targetRef}`) === null) {
+    console.error(`\n❌ git merge --ff-only ${targetRef} failed (diverged?).`);
     console.error("   Resolve manually, then run: fapony update");
     if (hasDirty) {
       const popResult = gitQuiet("stash pop");
@@ -322,15 +334,6 @@ export async function cmdUpdate(
   }
 
   // --- show what changed ---
-  if (isUpToDate(oldSha, newSha)) {
-    console.log(`\n  ✓  Already up to date (${oldVersion} @ ${oldSha}).`);
-    // The repo being current says nothing about the generated plugin bodies —
-    // a user who pulled by hand, or installed before the template changed, is
-    // exactly who needs this. Refresh is a no-op when nothing is stale.
-    refreshFn();
-    return;
-  }
-
   console.log(
     `\n  ✓  Updated ${oldVersion}@${oldSha} → ${newVersion}@${newSha}`,
   );
@@ -357,11 +360,11 @@ export async function cmdUpdate(
   }
 
   // --- refresh generated plugin bodies (after deps — the fresh process needs them) ---
-  refreshFn();
+  const refreshed = refreshFn();
 
   console.log(`\n  What's installed now:`);
   console.log(`    ✓ fapony ${newVersion} @ ${newSha}`);
-  console.log(`    ✓ client plugins refreshed`);
+  if (refreshed) console.log(`    ✓ client plugins refreshed`);
   console.log(
     `    → run "fapony install --dry-run" to preview remaining client changes`,
   );
