@@ -120,6 +120,7 @@ self-graded.
 npm install -g @zecalis/fapony
 #    from source instead:
 #    git clone https://github.com/zecalis/fapony.git && cd fapony && bun install && bun link
+#    update: npm i -g @zecalis/fapony@latest && fapony install  (from source: fapony update)
 #    (`bun link` claims the global `fapony` bin by package name, not path — re-run it in the
 #    checkout you want to be the one)
 
@@ -274,7 +275,7 @@ fapony report-web [file]                   # static HTML report page
 fapony init <path>                         # scaffold .fapony/ (plan/done/spec/evidence)
 fapony install [--all|--platform <name>|--dry-run]  # wire skills + plan-mv guard into clients
 fapony setup                               # interactive wizard: config + scaffold in one step
-fapony update [--dry-run|--yes]            # git checkouts only; npm/bun global: npm i -g @zecalis/fapony@latest && fapony install
+fapony update [--dry-run|--yes]            # git checkouts only — npm install: see Quick start
 fapony upgrade                             # alias of update
 fapony telemetry show|send                 # opt-in only, default off — see TELEMETRY.md
 ```
