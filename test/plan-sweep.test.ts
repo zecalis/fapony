@@ -503,9 +503,19 @@ test("testPlanSweepBlocksOnOpenHandoffNotes", () => {
       const blocked = sweep();
       assert.equal(blocked.exitCode, 1, "an open handoff note blocks");
       assert.match(blocked.stderr.toString(), /open handoff.*\n.*\[h1\]/);
+      // the dry run says what --apply will refuse on, not "ready to move"
+      const dry = Bun.spawnSync(["bun", FAPONY, "plan", "sweep", "PLAN-d.md"], {
+        cwd: dir,
+        env: process.env,
+        stdout: "pipe",
+      }).stdout.toString();
+      assert.doesNotMatch(dry, /ready to move/);
+      assert.match(dry, /open handoff.*\n.*\[h1\]/);
     });
   });
-  console.log("  ✓ plan-sweep --apply blocks on an open handoff note");
+  console.log(
+    "  ✓ plan-sweep --apply blocks on an open handoff note (dry run says so)",
+  );
 });
 
 test("testPlanSweepAllowsClosedHandoffNotes", () => {

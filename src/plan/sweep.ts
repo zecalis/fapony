@@ -630,6 +630,21 @@ const archiveSpec = (plan: string): string | null => {
   return `moved spec ${rel(src)} → ${rel(dst)} — no active plan names it any more (inbound links rewritten: ${inbound})`;
 };
 
+// Notes and decisions are the plan's history and travel with it (basename
+// match survives the move); an open issue (MemRow kind "bug") is unfinished
+// work — and so is an open handoff row (`plan:<name>:handoff` or legacy
+// `plan:<name>:chunk-N`, any kind). Null when nothing blocks the move.
+const openRowsBlockingMove = (src: string): string | null => {
+  const openBugs = openRowsFor(rel(src)).filter((r) => r.kind === "bug");
+  const { live: openHandoffs } = splitHandoffs(src);
+  if (!openBugs.length && !openHandoffs.length) return null;
+  return [
+    `still has ${openBugs.length} open issue(s) + ${openHandoffs.length} open handoff(s) (fael) — close them first:`,
+    ...openBugs.map((r) => `  [${r.id}] ${r.kind} ${r.text}`),
+    ...openHandoffs.map((r) => `  [${r.id}] handoff ${r.key} ${r.text}`),
+  ].join("\n");
+};
+
 export const cmdPlanSweep = (a: string[]) => {
   const dir = planDir;
   if (!existsSync(dir)) {
@@ -715,6 +730,12 @@ export const cmdPlanSweep = (a: string[]) => {
       );
       return;
     }
+    // --apply refuses on open fael rows: the dry run must not say "ready" first
+    const blocking = shipped ? openRowsBlockingMove(src) : null;
+    if (blocking) {
+      console.log(`${target}: ${blocking}`);
+      return;
+    }
     console.log(
       superseded
         ? `${target}: status:superseded — ready to move (add --apply)`
@@ -735,24 +756,12 @@ export const cmdPlanSweep = (a: string[]) => {
     );
     process.exit(1);
   }
-  // Notes and decisions are the plan's history and travel with it (basename
-  // match survives the move); an open issue (MemRow kind "bug") is unfinished
-  // work — and so is an open handoff row (`plan:<name>:handoff` or legacy
-  // `plan:<name>:chunk-N`, any kind),
-  // which the old kind-only check let straight through to done/.
-  const openBugs = openRowsFor(rel(src)).filter((r) => r.kind === "bug");
-  const { live: openHandoffs, stale: staleHandoffs } = splitHandoffs(src);
-  if ((openBugs.length || openHandoffs.length) && !process.env.MEM_FORCE) {
-    const lines = [
-      ...openBugs.map((r) => `  [${r.id}] ${r.kind} ${r.text}`),
-      ...openHandoffs.map((r) => `  [${r.id}] handoff ${r.key} ${r.text}`),
-    ];
-    console.error(
-      `${name}: still has ${openBugs.length} open issue(s) + ${openHandoffs.length} open handoff(s) (fael) — close them first (MEM_FORCE=1 to override):\n` +
-        lines.join("\n"),
-    );
+  const blocking = openRowsBlockingMove(src);
+  if (blocking && !process.env.MEM_FORCE) {
+    console.error(`${name}: ${blocking}\n(MEM_FORCE=1 to override)`);
     process.exit(1);
   }
+  const { stale: staleHandoffs } = splitHandoffs(src);
 
   const dst = join(doneDir, name);
   if (existsSync(dst)) {
