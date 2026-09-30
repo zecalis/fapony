@@ -244,6 +244,41 @@ test("testPlanShowsNextChunkRowsFirst", () => {
   );
 });
 
+test("testPlanHandoffKeyLeads", () => {
+  withFakeFael((setRows) =>
+    withTempRepo((dir) => {
+      const p = join(dir, ".fapony", "plan");
+      mkdirSync(p, { recursive: true });
+      writeFileSync(
+        join(p, "PLAN-x.md"),
+        plan("X", "", "- [x] chunk 1 — done\n- [ ] chunk 2 — next"),
+      );
+      setRows([
+        {
+          id: "new",
+          ts: "2026-09-26T00:00:00Z",
+          kind: "note",
+          text: "newest, not a handoff",
+          files: ["plan:x"],
+        },
+        {
+          id: "hand",
+          ts: "2026-09-24T00:00:00Z",
+          kind: "note",
+          text: "chunk 2 must know Y",
+          files: ["src/a.ts", "plan:x"],
+          key: "plan:x:handoff",
+        },
+      ]);
+      const out = run(dir, ["PLAN-x"]);
+      assert.match(
+        out,
+        /## open in fael \(2\)\n- \S+ note \[hand\] plan:x:handoff chunk 2 must know Y\n- \S+ note \[new\]/,
+      );
+    }),
+  );
+});
+
 test("testPlanNextChunkLeadsWhenTheLabelIsBold", () => {
   withFakeFael((setRows) =>
     withTempRepo((dir) => {

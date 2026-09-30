@@ -209,6 +209,37 @@ test("testFinalChunkHandoffIsStaleOnceAllTicked", () => {
   console.log("  ✓ chunk-<last+1> handoff is stale once every chunk ships");
 });
 
+test("testHandoffKeyIsStaleOnceAllTicked", () => {
+  withTempRepo((dir) => {
+    const { onMain } = repo(dir);
+    const hdr = "> ✅ **shipped 2026-09-30** (abc1234)";
+    const row = {
+      id: "h9",
+      ts: "2026-09-30T00:00:00Z",
+      kind: "note",
+      text: "handoff",
+      key: "plan:a:handoff",
+    };
+    withFakeFael((setRows) => {
+      setRows([row]);
+      plan(dir, [`- [x] chunk 1 — a (${onMain})`, "- [ ] chunk 2 — b"], hdr);
+      assert.notEqual(sweep(dir, "--apply").code, 0, "chunk 2 still open");
+      plan(
+        dir,
+        [`- [x] chunk 1 — a (${onMain})`, `- [x] chunk 2 — b (${onMain})`],
+        hdr,
+      );
+      const r = sweep(dir, "--apply");
+      assert.equal(r.code, 0, r.err);
+      assert.match(
+        r.out,
+        new RegExp(`fael close h9 "chunk 2 shipped ${onMain}"`),
+      );
+    });
+  });
+  console.log("  ✓ plan:<name>:handoff is live until every chunk ships");
+});
+
 const run = (cwd: string, ...args: string[]) => {
   const p = Bun.spawnSync(["bun", FAPONY, "plan", ...args], {
     cwd,

@@ -61,7 +61,8 @@ export const openRowsFor = (planPath: string): MemRow[] => {
 };
 
 // Closing-ceremony handoffs — open `plan:<name>:*` rows by key, any kind.
-// Handoff notes (`fael add note --key plan:<name>:chunk-N`) are the plan's
+// Handoff notes (`fael add note --key plan:<name>:handoff`, legacy
+// `plan:<name>:chunk-N`) are the plan's
 // unfinished work. Open/closed/superseded is fael's call, never re-derived here.
 export const openHandoffRowsFor = (planPath: string): MemRow[] => {
   const name = planKeyName(planPath);
@@ -508,7 +509,9 @@ export const shippedNotMoved = (): string[] => {
 // not ticked (or ticked without proof) keeps its handoff live.
 // Closing the final chunk writes `chunk-<last+1>`, which names no chunk: it
 // hands off to nothing, so it is stale once every chunk is ticked and the
-// last one proves it (n = that last chunk).
+// last one proves it (n = that last chunk). `plan:<name>:handoff` names no
+// chunk either (one key per plan), so it takes the same path: live while any
+// chunk is unchecked, stale once all are ticked and the last one proves it.
 export const splitHandoffs = (
   planPath: string,
 ): { live: MemRow[]; stale: { row: MemRow; ref: string; n: string }[] } => {
@@ -520,7 +523,9 @@ export const splitHandoffs = (
   const live: MemRow[] = [];
   const stale: { row: MemRow; ref: string; n: string }[] = [];
   for (const row of openHandoffRowsFor(planPath)) {
-    const key = /:chunk-(\d+)$/.exec(row.key ?? "")?.[1];
+    const key =
+      /:chunk-(\d+)$/.exec(row.key ?? "")?.[1] ??
+      (row.key?.endsWith(":handoff") ? String(last + 1) : undefined);
     const n =
       key && Number(key) > last && !unchecked.length ? String(last) : key;
     const line = n && checked.find((l) => chunkLabel(l) === n);
@@ -664,7 +669,8 @@ export const cmdPlanSweep = (a: string[]) => {
   }
   // Notes and decisions are the plan's history and travel with it (basename
   // match survives the move); an open issue (MemRow kind "bug") is unfinished
-  // work — and so is an open handoff row (`plan:<name>:chunk-N`, any kind),
+  // work — and so is an open handoff row (`plan:<name>:handoff` or legacy
+  // `plan:<name>:chunk-N`, any kind),
   // which the old kind-only check let straight through to done/.
   const openBugs = openRowsFor(rel(src)).filter((r) => r.kind === "bug");
   const { live: openHandoffs, stale: staleHandoffs } = splitHandoffs(src);

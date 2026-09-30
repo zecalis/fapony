@@ -32,8 +32,8 @@ const HELP = `usage: fapony plan [<PLAN.md> | --files <path>] | adopt <any-doc.m
                               plan/ and done/. No match or several → reported only
 
 close a chunk: tick it with its sha, commit, then
-  fael add note "<what chunk N+1 must know>" --files <f1>,plan:<name> --key plan:<name>:chunk-<N+1>
-  (<name> = PLAN-<name>.md, lowercase)
+  fael add note "<what chunk N+1 must know>" --files <f1>,plan:<name> --key plan:<name>:handoff
+  (<name> = PLAN-<name>.md, lowercase; one key per plan — fael supersedes the previous note)
 example: fapony plan .fapony/plan/PLAN-x.md`;
 
 export function cmdPlan(a: string[]): void {

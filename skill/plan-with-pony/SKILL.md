@@ -67,7 +67,7 @@ request, ticket, or todo someone outside this workflow wrote. It is input, not a
   `(from doc)`, everything the doc doesn't say `(guess)`. Once you truth-checked a
   `(from doc)` line against the code, drop the tag.
 - **The anchor comes from the plan file, never from this text.** The adopted (or
-  seeded) PLAN already carries its `fael add note … --key …:chunk-<N+1>` handoff
+  seeded) PLAN already carries its `fael add note … --key …:handoff` handoff
   line in §6 with the real anchor filled in — copy that line, don't invent one.
 - Pushback lives here, not in the CLI: the sync copied the doc verbatim and can't
   judge intent, so a destructive or contradictory request gets challenged in the
@@ -216,7 +216,7 @@ becomes a second copy of the plan, and then neither copy can be trusted. `fapony
 checkboxes in the **first `##` section only**, so section 6 stays detail rather than status.
 
 **Chunk handoff has one shape.** Whoever closes chunk N (tick + sha + commit) leaves what chunk N+1
-must know as the `fael add note … --files … --key …:chunk-<N+1>` line already sitting in the plan's
+must know as the `fael add note … --files … --key …:handoff` line already sitting in the plan's
 own §6 (seeded by `plan-seed`, or by `plan adopt` for an adopted doc) — copy it, fill in the files
 and the note text. Use the plan's own anchor, never the PLAN path: the path
 changes on `fapony plan sweep` and sits in a gitignored folder. The next session opens the chunk

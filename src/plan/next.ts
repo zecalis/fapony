@@ -6,7 +6,8 @@
 //   <PLAN.md> → its unchecked chunks, whether the last ticked chunk's sha
 //               verifies, and the open fael rows about it (the chunk handoff
 //               notes — `fael add note … --files <f>,plan:<name>
-//               --key plan:<name>:chunk-<n>`), the next chunk's rows first
+//               --key plan:<name>:handoff`), the open handoff first
+//               (legacy `plan:<name>:chunk-<n>` rows for the next chunk too)
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -117,13 +118,20 @@ function showPlan(file: string, chunk: string | null): void {
   const hint = closureHint(checked);
   if (hint) console.log(hint);
 
-  // Rows keyed to the first unchecked chunk lead — they are the handoff
-  // the session opening that chunk came for. Stable sort keeps newest-first.
+  // The handoff leads — it is what the session opening the next chunk came
+  // for: `plan:<name>:handoff` (one key per plan, fael keeps only the newest
+  // open), or a legacy `plan:<name>:chunk-<next>` row. Stable sort keeps
+  // newest-first.
   const name = planKeyName(file);
   const next = chunk ?? (unchecked[0] ? chunkLabel(unchecked[0]) : null);
   const nextKey = name && next ? `plan:${name}:chunk-${next}` : null;
+  const handoffKey = name ? `plan:${name}:handoff` : null;
   const rows = openRowsFor(file)
-    .map((r, i) => ({ r, i, lead: !!nextKey && r.key === nextKey }))
+    .map((r, i) => ({
+      r,
+      i,
+      lead: !!r.key && (r.key === handoffKey || r.key === nextKey),
+    }))
     .sort((a, b) => Number(b.lead) - Number(a.lead) || a.i - b.i)
     .map(({ r }) => r);
   if (rows.length) {

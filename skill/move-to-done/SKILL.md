@@ -53,7 +53,7 @@ You are about to move a PLAN that has been shipped to the archive.
    ```bash
    fapony plan sweep <PLAN-foo.md> --apply
    ```
-    It refuses if the plan is not ready, fael still has an open issue about it, or an open handoff row (`plan:<name>:chunk-N`) whose chunk is not ticked — general notes and decisions travel with the plan. A handoff whose chunk is already ticked+verified is stale: sweep prints its `fael close <id> "…"` line — run it (fapony never writes fael).
+    It refuses if the plan is not ready, fael still has an open issue about it, or an open handoff row (`plan:<name>:handoff`, or legacy `plan:<name>:chunk-N`) whose chunk is not ticked (a `:handoff` row stays live until every chunk is ticked) — general notes and decisions travel with the plan. A handoff whose chunk is already ticked+verified is stale: sweep prints its `fael close <id> "…"` line — run it (fapony never writes fael).
    If git refuses ("not under version control" — `.fapony/` is gitignored in this repo), plain
    `mv` instead; there's nothing to commit for an untracked path, so skip step 4 in that case.
    The filename gets no date prefix — the ship date is already in the header (step 1).
