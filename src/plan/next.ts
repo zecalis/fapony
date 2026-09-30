@@ -10,7 +10,8 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { doneDir, planDir, rel, root } from "./store.js";
+import { mentionsOfFiles, resolvePlan } from "./resolve.js";
+import { doneDir, planBase, planDir, rel, root } from "./store.js";
 import {
   checkTickedLine,
   openRowsFor,
@@ -100,19 +101,39 @@ const clip = (s: string): string => {
   return flat.length > TEXT_MAX ? `${flat.slice(0, TEXT_MAX - 1)}…` : flat;
 };
 
-/** A plan arg as typed (bare name, with/without .md, or a path) → the file. */
-const findPlan = (arg: string): string | null => {
-  const name = arg.endsWith(".md") ? basename(arg) : `${basename(arg)}.md`;
-  return (
-    [arg, join(root, arg), join(planDir, name), join(doneDir, name)].find(
-      (p) => p.endsWith(".md") && existsSync(p),
-    ) ?? null
-  );
+// The plan's `spec:` frontmatter → where it lives, or that it is gone. No
+// `spec:` key = a plan without a spec, nothing to say.
+const specLine = (planPath: string): string | null => {
+  try {
+    const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(
+      readFileSync(planPath, "utf8"),
+    )?.[1];
+    const name = front && /^spec:\s*(\S+)\s*$/m.exec(front)?.[1];
+    if (!name) return null;
+    const spec = join(planBase, "spec", basename(name));
+    return existsSync(spec)
+      ? `spec: ${rel(spec)}`
+      : `⚠ spec ${basename(name)} is named in the frontmatter but not in ${rel(join(planBase, "spec"))}/`;
+  } catch {
+    return null;
+  }
 };
 
-function showPlan(file: string): void {
+function showFiles(files: string[]): void {
+  const hits = mentionsOfFiles(files);
+  console.log(`# plans and specs mentioning ${files.join(", ")}`);
+  if (!hits.length) console.log("(none)");
+  for (const h of hits)
+    console.log(
+      `- ${h.label} ${h.name} — ${h.title}${h.shipped ? ` (shipped ${h.shipped})` : ""}`,
+    );
+}
+
+function showPlan(file: string, chunk: string | null): void {
   const { checked, unchecked } = readPlanSectionItems(file);
   console.log(`# ${readPlanTitle(file) || basename(file)} — ${rel(file)}`);
+  const spec = specLine(file);
+  if (spec) console.log(spec);
   if (unchecked.length) {
     console.log(`\n## unchecked`);
     for (const c of unchecked) console.log(`- [ ] ${c}`);
@@ -125,7 +146,7 @@ function showPlan(file: string): void {
   // Rows keyed to the first unchecked chunk lead — they are the handoff
   // the session opening that chunk came for. Stable sort keeps newest-first.
   const name = planKeyName(file);
-  const next = unchecked[0] ? chunkLabel(unchecked[0]) : null;
+  const next = chunk ?? (unchecked[0] ? chunkLabel(unchecked[0]) : null);
   const nextKey = name && next ? `plan:${name}:chunk-${next}` : null;
   const rows = openRowsFor(file)
     .map((r, i) => ({ r, i, lead: !!nextKey && r.key === nextKey }))
@@ -189,17 +210,31 @@ function showAll(): void {
 }
 
 export function cmdPlanNext(a: string[]): void {
+  const fi = a.indexOf("--files");
+  if (fi >= 0) {
+    const files = (a[fi + 1] ?? "").split(",").filter(Boolean);
+    if (!files.length) {
+      console.error(
+        "--files needs a path: fapony plan --files src/x.ts[,src/y.ts]",
+      );
+      process.exit(1);
+    }
+    showFiles(files.map((f) => (f.startsWith(root) ? rel(f) : f)));
+    return;
+  }
   const arg = a.find((x) => !x.startsWith("--"));
   if (!arg) {
     showAll();
     return;
   }
-  const file = findPlan(arg);
-  if (!file) {
+  const r = resolvePlan(arg);
+  if (!r.ok) {
     console.error(
-      `no plan "${arg}" (looked in ${rel(planDir)}/, ${rel(doneDir)}/ and the repo root)`,
+      r.candidates.length
+        ? `"${arg}" matches ${r.candidates.length} plans — name one:\n${r.candidates.map((c) => `  ${c}`).join("\n")}`
+        : `no plan "${arg}" (looked in ${rel(planDir)}/, ${rel(doneDir)}/ and the repo root)`,
     );
     process.exit(1);
   }
-  showPlan(file);
+  showPlan(r.file, r.chunk);
 }

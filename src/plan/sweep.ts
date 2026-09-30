@@ -20,6 +20,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 
 import { type MemRow, readFaelLog } from "../fael.js";
 import { slugify } from "./adopt.js";
+import { resolvePlan } from "./resolve.js";
 import { doneDir, planBase, planDir, rel, root } from "./store.js";
 
 /** PLAN-<name>.md → "<name>" lowercased — the fael anchor/key form
@@ -475,7 +476,7 @@ export const cmdPlanSweep = (a: string[]) => {
   }
   const candidates = shippedNotMoved();
 
-  const target = a.find((x) => x.endsWith(".md"));
+  const target = a.find((x) => !x.startsWith("--"));
   const apply = a.includes("--apply");
 
   if (!target) {
@@ -524,18 +525,18 @@ export const cmdPlanSweep = (a: string[]) => {
     return;
   }
 
-  // target arrives as a bare name (PLAN-x.md, the SKILL form) or a repo-relative
-  // path (.fapony/plan/PLAN-x.md, the example form) — both must resolve, so try
-  // planDir first, then the repo root, then the bare basename as a last resort.
-  const src = [
-    join(dir, target),
-    join(root, target),
-    join(dir, basename(target)),
-  ].find((p) => existsSync(p));
-  if (!src) {
-    console.error(`${target} not found (looked in ${rel(dir)}/ and repo root)`);
+  // target: PLAN-x.md, a repo-relative path, a bare name or a unique substring
+  // — the same resolver `fapony plan` uses.
+  const r = resolvePlan(target);
+  if (!r.ok) {
+    console.error(
+      r.candidates.length
+        ? `${target} matches ${r.candidates.length} plans — name one:\n${r.candidates.map((c) => `  ${c}`).join("\n")}`
+        : `${target} not found (looked in ${rel(dir)}/, ${rel(doneDir)}/ and repo root)`,
+    );
     process.exit(1);
   }
+  const src = r.file;
   const name = basename(src);
   const srcDir = dirname(src);
   const fm = parsePlanFrontmatter(src);

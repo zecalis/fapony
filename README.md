@@ -33,7 +33,7 @@ One chunk, one session:
 
 ```mermaid
 flowchart TD
-    S([new session]) --> K["fael kickoff — SessionStart hook<br/>open decisions + issues"]
+    S([new session]) --> K["fael kickoff — SessionStart hook<br/>open decisions + issues (memory only, not plan-aware)"]
     K --> P["fapony plan PLAN-x.md<br/>unchecked chunks + handoff notes from fael"]
     P --> L["fapony review-seed --files …<br/>exports + importers instead of whole-file reads"]
     L --> E["edit<br/>fael read hook: rows about that file"]
