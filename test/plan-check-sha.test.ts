@@ -17,10 +17,12 @@ const FAPONY = join(import.meta.dir, "..", "fapony.ts");
 const git = (dir: string, cmd: string): string =>
   execSync(`git ${cmd}`, { cwd: dir }).toString().trim();
 
-// A repo with: HEAD commit (good), a side-branch commit (exists but never on
-// HEAD), and HEAD's tree sha (an object, not a commit).
+// A repo with: HEAD commit (good), a commit on a live side branch (held —
+// another worktree's work), a commit whose branch was deleted (diverged: no
+// ref holds it), and HEAD's tree sha (an object, not a commit).
 function repoWithShas(dir: string): {
   good: string;
+  held: string;
   diverged: string;
   tree: string;
 } {
@@ -34,9 +36,15 @@ function repoWithShas(dir: string): {
   writeFileSync(join(dir, "b.txt"), "b\n");
   execSync("git add .", { cwd: dir, stdio: "ignore" });
   execSync('git commit -m "side"', { cwd: dir, stdio: "ignore" });
+  const held = git(dir, "rev-parse --short=7 HEAD");
+  execSync("git checkout -b lost", { cwd: dir, stdio: "ignore" });
+  writeFileSync(join(dir, "c.txt"), "c\n");
+  execSync("git add .", { cwd: dir, stdio: "ignore" });
+  execSync('git commit -m "lost"', { cwd: dir, stdio: "ignore" });
   const diverged = git(dir, "rev-parse --short=7 HEAD");
   execSync(`git checkout ${base}`, { cwd: dir, stdio: "ignore" });
-  return { good, diverged, tree };
+  execSync("git branch -D lost", { cwd: dir, stdio: "ignore" });
+  return { good, held, diverged, tree };
 }
 
 test("testExtractShas", () => {
@@ -56,7 +64,7 @@ test("testExtractShas", () => {
 
 test("testCheckTickedLine", () => {
   withTempRepo((dir) => {
-    const { good, diverged, tree } = repoWithShas(dir);
+    const { good, held, diverged, tree } = repoWithShas(dir);
     assert.deepEqual(checkTickedLine(`- [x] chunk 1 — ok (${good})`, dir), {
       missing: [],
       diverged: [],
@@ -66,8 +74,14 @@ test("testCheckTickedLine", () => {
       checkTickedLine(`- [x] chunk 1 — tree, not commit (${tree})`, dir),
       { missing: [tree], diverged: [], cited: 1 },
     );
+    // Another worktree's branch holds it → verified, not "rebased away".
     assert.deepEqual(
-      checkTickedLine(`- [x] chunk 1 — side branch (${diverged})`, dir),
+      checkTickedLine(`- [x] chunk 1 — side branch (${held})`, dir),
+      { missing: [], diverged: [], cited: 1 },
+    );
+    // Object exists but no ref holds it (squashed, branch deleted).
+    assert.deepEqual(
+      checkTickedLine(`- [x] chunk 1 — orphan (${diverged})`, dir),
       { missing: [], diverged: [diverged], cited: 1 },
     );
     // Hex words git never heard of are plain words, never issues.
@@ -92,7 +106,52 @@ test("testCheckTickedLine", () => {
       { missing: [], diverged: [], cited: 1 },
     );
   });
-  console.log("  ✓ checkTickedLine: ok / missing / diverged / plain-word");
+  console.log(
+    "  ✓ checkTickedLine: ok / held / missing / diverged / plain-word",
+  );
+});
+
+// A squash-merged PR leaves only "subject (#N)" on the default branch.
+test("testCheckTickedLinePrNumber", () => {
+  withTempRepo((dir) => {
+    repoWithShas(dir);
+    const squash = (subject: string) => {
+      execSync(`git commit --allow-empty -m "${subject}"`, {
+        cwd: dir,
+        stdio: "ignore",
+      });
+    };
+    squash("feat: one (#115)");
+    squash("feat: two (#116)");
+    squash("feat: three (#116)");
+    const tick = (pr: number) => `- [x] chunk 1 — shipped (#${pr})`;
+    assert.deepEqual(checkTickedLine(tick(115), dir), {
+      missing: [],
+      diverged: [],
+      cited: 1,
+    });
+    // ≥2 commits share the number → ambiguous, reported.
+    assert.deepEqual(checkTickedLine(tick(116), dir), {
+      missing: ["#116"],
+      diverged: [],
+      cited: 1,
+    });
+    // none → reported.
+    assert.deepEqual(checkTickedLine(tick(999), dir), {
+      missing: ["#999"],
+      diverged: [],
+      cited: 1,
+    });
+    // "issue #115" outside parens is prose, not a citation.
+    assert.deepEqual(checkTickedLine("- [x] chunk 1 — see issue #115", dir), {
+      missing: [],
+      diverged: [],
+      cited: 0,
+    });
+  });
+  console.log(
+    "  ✓ checkTickedLine: (#N) verifies on exactly one default-branch commit",
+  );
 });
 
 // End to end through the real CLI: plan/ + done/ are both scanned, bad shas
@@ -177,7 +236,7 @@ const planWith = (ticked: string): string =>
 
 test("testKickoffClosureHint", () => {
   withTempRepo((dir) => {
-    const { good, diverged, tree } = repoWithShas(dir);
+    const { good, held, diverged, tree } = repoWithShas(dir);
     // Verified sha → silent.
     let out = kickoffOutput(dir, planWith(`- [x] chunk 8 — done (${good})`));
     assert.doesNotMatch(out, /⚠ chunk/, `verified sha stays silent:\n${out}`);
@@ -196,11 +255,14 @@ test("testKickoffClosureHint", () => {
       new RegExp(`⚠ chunk 8 is ticked but ${tree} is not in git`),
       `missing sha warns:\n${out}`,
     );
-    // Diverged sha → warn.
+    // Held by another branch (a sibling worktree's tick) → silent.
+    out = kickoffOutput(dir, planWith(`- [x] chunk 8 — done (${held})`));
+    assert.doesNotMatch(out, /⚠ chunk/, `held sha stays silent:\n${out}`);
+    // No ref holds it → warn.
     out = kickoffOutput(dir, planWith(`- [x] chunk 8 — done (${diverged})`));
     assert.match(
       out,
-      new RegExp(`⚠ chunk 8 is ticked but ${diverged} is not on HEAD`),
+      new RegExp(`⚠ chunk 8 is ticked but ${diverged} is held by no branch`),
       `diverged sha warns:\n${out}`,
     );
   });

@@ -733,6 +733,65 @@ const isAnyObject = (sha: string, cwd: string): boolean =>
 export const isAncestorOfHead = (sha: string, cwd: string): boolean =>
   gitOk(["merge-base", "--is-ancestor", sha, "HEAD"], cwd);
 
+const gitOut = (args: string[], cwd: string): string => {
+  try {
+    const p = Bun.spawnSync(["git", ...args], {
+      cwd,
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    return p.exitCode === 0 ? p.stdout.toString().trim() : "";
+  } catch {
+    return "";
+  }
+};
+
+/** origin/HEAD's target, else main/master — whichever exists. */
+export const defaultBranch = (cwd: string): string | null => {
+  const head = gitOut(
+    ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+    cwd,
+  );
+  if (head) return head;
+  return (
+    ["main", "master"].find((b) =>
+      gitOk(["rev-parse", "--verify", "--quiet", b], cwd),
+    ) ?? null
+  );
+};
+
+// .fapony/ is one dir shared by every worktree, so a tick another agent made
+// on its own branch is not an ancestor of THIS HEAD. Any local or origin ref
+// holding the commit proves it exists on someone's line of work; a commit no
+// ref holds (squashed, branch deleted) is the only "diverged" left.
+// ponytail: local branches + origin only, tags and stash are not "work".
+export const isHeldByRef = (sha: string, cwd: string): boolean =>
+  isAncestorOfHead(sha, cwd) ||
+  gitOut(
+    [
+      "for-each-ref",
+      "--contains",
+      sha,
+      "--count=1",
+      "--format=%(refname)",
+      "refs/heads",
+      "refs/remotes",
+    ],
+    cwd,
+  ) !== "";
+
+/** How many commits on the default branch have a subject ending `(#N)` —
+ *  squash-merge's calling card. Exactly 1 verifies the tick; 0 or ≥2 is
+ *  reported, never guessed. */
+export const countPrCommits = (pr: string, cwd: string): number => {
+  const base = defaultBranch(cwd);
+  if (!base) return 0;
+  const tail = ` (#${pr})`;
+  return gitOut(["log", base, "--format=%s"], cwd)
+    .split("\n")
+    .filter((s) => s.endsWith(tail)).length;
+};
+
 // Per ticked line: which cited shas fail, plus how many shas the line cites
 // at all (cited). A hex word git never heard of is a plain word (deadbee,
 // the "feedbac" inside "feedback") — UNLESS it sits in a paren group with a
@@ -767,10 +826,14 @@ export const checkTickedLine = (
     if (gs.some((s) => known.has(s))) for (const s of gs) citedInGroup.add(s);
   }
   let cited = 0;
+  for (const m of line.matchAll(/\(#(\d+)\)/g)) {
+    cited++;
+    if (countPrCommits(m[1], cwd) !== 1) missing.push(`#${m[1]}`);
+  }
   for (const [sha, st] of status) {
     if (st === "commit") {
       cited++;
-      if (!isAncestorOfHead(sha, cwd)) diverged.push(sha);
+      if (!isHeldByRef(sha, cwd)) diverged.push(sha);
     } else if (st === "object") {
       cited++;
       missing.push(sha);
@@ -869,12 +932,14 @@ export const cmdPlanCheck = (a: string[]) => {
       }
       for (const sha of missing) {
         issues.push(
-          `${relPath}:${i + 1} — ticked chunk cites ${sha} but git has no such commit\n   fix: correct the sha or leave the chunk unticked`,
+          sha.startsWith("#")
+            ? `${relPath}:${i + 1} — ticked chunk cites (${sha}) but the default branch has no single commit ending (${sha})\n   fix: cite the merged commit's sha or leave the chunk unticked`
+            : `${relPath}:${i + 1} — ticked chunk cites ${sha} but git has no such commit\n   fix: correct the sha or leave the chunk unticked`,
         );
       }
       for (const sha of diverged) {
         issues.push(
-          `${relPath}:${i + 1} — ticked chunk cites ${sha} which is not an ancestor of HEAD (rebased away?)\n   fix: point at the surviving commit or leave the chunk unticked`,
+          `${relPath}:${i + 1} — ticked chunk cites ${sha} which no branch holds (squashed, branch deleted?)\n   fix: point at the surviving commit or leave the chunk unticked`,
         );
       }
     });
