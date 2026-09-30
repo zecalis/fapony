@@ -102,7 +102,7 @@ const fixTicks = (files: string[]): string[] => {
           if (found.length !== 1) {
             if (lost.has(sha))
               out.push(
-                `${rel(f)}:${i + 1} — ${sha}: ${found.length ? `${found.length} candidates (${found.map((c) => c.slice(0, 7)).join(", ")})` : "no commit on the default branch matches"} — not changed`,
+                `${rel(f)}:${i + 1} — ${sha}: ${found.length ? `${found.length} candidates (${found.map((c) => c.slice(0, 7)).join(", ")})` : "no commit on the default branch matches (a PR squashing several commits?) — append its `(#N)` to the tick"} — not changed`,
               );
             continue;
           }

@@ -369,7 +369,7 @@ test("testKickoffClosureHint", () => {
     // The squash commit exists, only the tick is stale → the brief names the fix.
     assert.match(
       out,
-      /held by no branch \(squashed, branch deleted\?\) — fix: fapony plan check --fix/,
+      /held by no branch \(squashed, branch deleted\?\) — fix: fapony plan check --fix, or append the merged PR's `\(#N\)` to the tick/,
       `diverged warning ends with the command:\n${out}`,
     );
     // A PR number naming no default-branch commit reads as a PR number.
