@@ -11,7 +11,7 @@ not to be read end to end.
 | [plan/PLAN-refactor-auth.md](plan/PLAN-refactor-auth.md) | `kind: tracker` — a list that never finishes, kept out of the backlog count |
 | [plan/PLAN-cli-logger.md](plan/PLAN-cli-logger.md) | **no frontmatter at all** — still grouped correctly from run history, so an existing folder of plans needs no migration |
 | [done/PLAN-fix-race-condition.md](done/PLAN-fix-race-condition.md) | the archive: shipped header carries the date, the filename does not |
-| [spec/SPEC-export.md](spec/SPEC-export.md) | the detail a plan links to instead of pasting — and the one file type that is never archived |
+| [spec/SPEC-export.md](spec/SPEC-export.md) | the detail a plan links to instead of pasting — it moves to `done/` with the last plan that cites it |
 
 This is what `plan_list` returns for this folder (`format: "markdown"`) — five files summarised
 in eight lines, with no plan body read into context:

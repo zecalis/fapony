@@ -76,7 +76,7 @@ anything longer belongs in the spec file, not here.
   into `done/`. `fapony plan PLAN-<feature>.md` lists these rows, the next chunk's first.
 
 **Where files live:** `.fapony/plan/` live · `.fapony/done/` shipped (a sibling, so archiving is a
-plain `git mv` that keeps every relative link working) · `.fapony/spec/` every spec, never archived.
+plain `git mv` that keeps every relative link working) · `.fapony/spec/` the specs plans cite (a spec moves to `done/` with the last plan that cites it).
 See [examples/](../examples/) for the whole layout with one file per shape.
 
 **Language:** frontmatter keys and values are English always (they are an enum a tool reads);

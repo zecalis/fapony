@@ -26,10 +26,10 @@ import {
 import { isAffirmative } from "./util.js";
 
 const FAPONY_README = `# .fapony/ — fapony project dir (plans, specs, conventions)
-# plan/ holds live plans, done/ the shipped ones, spec/ every spec (specs are a
-# reference library — they are not archived). done/ sits beside plan/ rather
-# than inside it so archiving never changes a file's depth, and the relative
-# links inside it keep working.
+# plan/ holds live plans, done/ the shipped ones, spec/ the specs live plans
+# cite (a spec moves to done/ with the last plan that cites it). done/ sits
+# beside plan/ rather than inside it so archiving never changes a file's depth,
+# and the relative links inside it keep working.
 # memory (decisions, bugs, notes) lives in fael; the evidence allowlist is
 # .fapony/evidence.json.
 #
