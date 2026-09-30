@@ -247,7 +247,7 @@ move. Specs live in `.fapony/spec/` and are never archived.
 # core: plans + debt (memory — decisions, bugs, notes — lives in fael)
 fapony plan [<PLAN.md>]                    # active plans + next chunk; one plan: unchecked chunks + open fael rows
 fapony plan sweep [<PLAN.md>] [--apply]    # archive shipped plans into done/ + rewrite links
-fapony plan check [--quiet]                # deps, broken links, ticked-chunk shas (exit 1 on issues)
+fapony plan check [--quiet] [--fix]        # deps, broken links, ticked-chunk shas (exit 1 on issues); --fix repairs squashed ticks + moved-plan links
 fapony debt [--id a,b] [--where <path>]    # which files haven't migrated to a declared convention (live, read-only)
 fapony lint-baseline [--cmd ...] [--diff]  # separate "already red" from "I made it red"
 fapony digest [--since 7d|YYYY-MM-DD] [--format text|html] [--json] [--out FILE]  # single-page summary from what's on disk
