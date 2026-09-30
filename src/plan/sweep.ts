@@ -978,11 +978,20 @@ const lookupShas = (
 // sha git knows, in which case the author cited it as a commit: the fixture
 // is (e898877 + e307fe6), where e898877 resolves to no object at all yet is
 // unmistakably a citation, not prose. `held` gets the full sha.
+//
+// `(#N)` is the tick that survives a squash: the merge rewrites the cited sha
+// (nothing holds it afterwards) but leaves "subject (#N)" on the default
+// branch. So a `(#N)` naming exactly one default-branch commit proves the
+// closure — the line's squashed shas are not "diverged". A `(#N)` naming none
+// is a PR that may still be open: only a problem when no sha on the line is
+// held by a branch either (two or more commits = ambiguous, always reported).
 export const checkTickedLine = (
   line: string,
   cwd: string,
   held: (full: string, cwd: string) => boolean = isHeldByRef,
 ): { missing: string[]; diverged: string[]; cited: number } => {
+  const ambiguous: string[] = [];
+  const open: string[] = [];
   const missing: string[] = [];
   const diverged: string[] = [];
   const found = lookupShas([...new Set(extractShas(line))], cwd);
@@ -993,14 +1002,19 @@ export const checkTickedLine = (
     if (gs.some((s) => known.has(s))) for (const s of gs) citedInGroup.add(s);
   }
   let cited = 0;
+  let merged = false;
   for (const m of line.matchAll(/\(#(\d+)\)/g)) {
     cited++;
-    if (prCommits(m[1], cwd).length !== 1) missing.push(`#${m[1]}`);
+    const n = prCommits(m[1], cwd).length;
+    if (n === 1) merged = true;
+    else (n ? ambiguous : open).push(`#${m[1]}`);
   }
+  let inFlight = false;
   for (const [sha, f] of found) {
     if (f.commit) {
       cited++;
-      if (!held(f.commit, cwd)) diverged.push(sha);
+      if (held(f.commit, cwd)) inFlight = true;
+      else if (!merged) diverged.push(sha);
     } else if (f.object || citedInGroup.has(sha)) {
       // an object that is no commit (blob/tree): "no such commit" is true
       cited++;
@@ -1008,7 +1022,11 @@ export const checkTickedLine = (
     }
     // else: a plain word that happens to be hex — skip
   }
-  return { missing, diverged, cited };
+  return {
+    missing: [...ambiguous, ...(inFlight ? [] : open), ...missing],
+    diverged,
+    cited,
+  };
 };
 
 // The commit that shipped the plan: the newest default-branch commit its ticks

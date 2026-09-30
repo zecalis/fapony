@@ -36,7 +36,7 @@ const LATER_MAX = 120;
  *  point here. */
 export const chunkRules = (anchor: string): string[] => [
   "batching: one session = one branch = one squash-merged PR, up to 3 chunks of this plan, one commit per chunk · a chunk gets its own PR when it changes a DB schema/migration or persisted format, touches auth/permissions/security or money logic, changes a public API/CLI contract, or needs a design review · close each chunk fully (tick + handoff note + commit) before the next; stop at anything that needs a human decision · a chunk that must build on an unmerged branch is stacked (PR base = that branch; once it merges: `git rebase --onto origin/main <lower> <upper>`)",
-  `closing a step: tick TL;DR with sha (+ PR number once it exists) · \`git commit\` files only · \`fael add note "<what the next chunk must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note)`,
+  `closing a step: tick TL;DR with sha · \`git commit\` files only · \`fael add note "<what the next chunk must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note) · after \`gh pr create\`, append \`(#N)\` to that tick (a squash rewrites the sha, \`(#N)\` survives it)`,
 ];
 
 /** First-section items with the `- [ ] ` / `- [x] ` marker cut off. */
@@ -58,9 +58,14 @@ const closureHint = (checked: string[]): string | null => {
   const label = chunkLabel(last);
   const who = label ? `chunk ${label} is ticked but ` : "last tick: ";
   if (missing.length)
-    return `⚠ ${who}${missing[0]} is not in git — nothing proves it closed`;
+    return `⚠ ${who}${
+      missing[0].startsWith("#")
+        ? `(${missing[0]}) names no single default-branch commit`
+        : `${missing[0]} is not in git`
+    } — nothing proves it closed`;
+  // the squash commit exists, only the tick is stale: `--fix` repoints it
   if (diverged.length)
-    return `⚠ ${who}${diverged[0]} is held by no branch (squashed, branch deleted?)`;
+    return `⚠ ${who}${diverged[0]} is held by no branch (squashed, branch deleted?) — fix: fapony plan check --fix`;
   if (!cited) return `⚠ ${who}cites no commit — nothing to verify it closed`;
   return null;
 };
