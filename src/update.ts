@@ -169,7 +169,10 @@ export async function cmdUpdate(
   if (isRepo !== "true") {
     console.error(`❌ ${ROOT} is not a git repo — cannot self-update.`);
     console.error(
-      "   Reinstall via: git clone https://github.com/zecalis/fapony.git",
+      "   Installed from npm? Run: npm i -g @zecalis/fapony@latest && fapony install",
+    );
+    console.error(
+      "   From source: git clone https://github.com/zecalis/fapony.git",
     );
     exitFn(1);
   }
