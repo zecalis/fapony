@@ -90,12 +90,13 @@ export const COMMANDS: CommandInfo[] = [
     summary: "wire skills + plan-mv guard into clients",
   },
   { name: "setup", group: "setup", summary: "interactive wizard" },
-  { name: "update", group: "setup", summary: "self-update via git pull" },
   {
-    name: "upgrade",
+    name: "update",
     group: "setup",
-    summary: "alias of update — preview, confirm, upgrade",
+    summary:
+      "preview incoming commits, confirm, fast-forward [--dry-run|--yes]",
   },
+  { name: "upgrade", group: "setup", summary: "alias of update" },
   { name: "telemetry", group: "setup", summary: "opt-in telemetry show/send" },
   {
     name: "stats",
