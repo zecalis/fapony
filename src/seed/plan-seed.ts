@@ -36,8 +36,8 @@ import {
 import { basename, join, relative, resolve, sep } from "node:path";
 import {
   collectSourceFiles,
+  EXPORT_EXTS,
   isSkippedDir,
-  SCAN_EXTS,
 } from "../analyze/index.js";
 import {
   CONFIG_FILENAME,
@@ -92,8 +92,8 @@ function scopeSourceFiles(root: string): string[] {
   if (!st.isDirectory()) {
     return isSourceFile(st, basename(root)) ? [root] : [];
   }
-  return collectSourceFiles(root, { skipHidden: true }).map((rel) =>
-    join(root, rel),
+  return collectSourceFiles(root, { skipHidden: true, exts: EXPORT_EXTS }).map(
+    (rel) => join(root, rel),
   );
 }
 
@@ -349,7 +349,9 @@ function fileLines(absFile: string): string[] {
 }
 
 function isSourceFile(st: { isDirectory(): boolean }, name: string): boolean {
-  return !st.isDirectory() && SCAN_EXTS.has(name.slice(name.lastIndexOf(".")));
+  return (
+    !st.isDirectory() && EXPORT_EXTS.has(name.slice(name.lastIndexOf(".")))
+  );
 }
 
 function moduleChunkFiles(absDir: string, entries: string[]): string[] {

@@ -9,6 +9,11 @@ import { join, relative, sep } from "node:path";
 
 export const SCAN_EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".py", ".pyi"]);
 
+// Files whose exports are listed. Rust is here but not in SCAN_EXTS: plan-seed
+// reads its `pub` items, while the import graph has no Rust edges — adding
+// `.rs` to the graph would report every Rust file as an orphan.
+export const EXPORT_EXTS = new Set([...SCAN_EXTS, ".rs"]);
+
 // "templates" for the same reason knip.json ignores templates/**: those files
 // ship as a template laid down in other repos by `fapony init` and never
 // have real importers here — scanning them produces false wrapper/orphan
@@ -45,8 +50,9 @@ export function isEntryPoint(rel: string): boolean {
 
 export function collectSourceFiles(
   absDir: string,
-  opts?: { skipHidden?: boolean },
+  opts?: { skipHidden?: boolean; exts?: Set<string> },
 ): string[] {
+  const exts = opts?.exts ?? SCAN_EXTS;
   const out: string[] = [];
   const stack: string[] = [absDir];
   while (stack.length > 0) {
@@ -66,7 +72,7 @@ export function collectSourceFiles(
         stack.push(join(dir, e.name));
       } else if (e.isFile()) {
         const dot = e.name.lastIndexOf(".");
-        if (dot >= 0 && SCAN_EXTS.has(e.name.slice(dot))) {
+        if (dot >= 0 && exts.has(e.name.slice(dot))) {
           out.push(relative(absDir, join(dir, e.name)).split(sep).join("/"));
         }
       }

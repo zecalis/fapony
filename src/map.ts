@@ -384,6 +384,31 @@ export function extractPythonExports(source: string): ExportScan {
   };
 }
 
+// --- Rust `pub` items (no parser: regex, column-0 only, so `impl` methods and
+// items inside an inline `mod {}` are not listed). ponytail: a `pub fn` at
+// column 0 inside a /* */ block comment would be listed — add a mask if a repo
+// shows one.
+const RS_PUB_RE =
+  /^pub(?:\([^)]*\))?\s+(?:(?:async|unsafe|const)\s+)*(fn|struct|enum|trait|type|const|mod)\s+([A-Za-z_]\w*)/;
+const RS_KINDS: Record<string, ExportKind> = {
+  fn: "fn",
+  struct: "class",
+  enum: "enum",
+  trait: "interface",
+  type: "type",
+  const: "const",
+  mod: "namespace",
+};
+
+function extractRustExports(source: string): ExportScan {
+  const symbols: ExportSymbol[] = [];
+  source.split("\n").forEach((raw, i) => {
+    const m = raw.match(RS_PUB_RE);
+    if (m) symbols.push({ name: m[2], line: i + 1, kind: RS_KINDS[m[1]] });
+  });
+  return { symbols, error: null };
+}
+
 export function extractExports(
   source: string,
   scanner?: ExportScanner,
@@ -391,6 +416,7 @@ export function extractExports(
 ): ExportScan {
   if (filename?.endsWith(".py") || filename?.endsWith(".pyi"))
     return extractPythonExports(source);
+  if (filename?.endsWith(".rs")) return extractRustExports(source);
   const s = scanner ?? getDefaultScanner();
   const scanned = scanSource(source, s);
   if (scanned.error) return { symbols: [], error: scanned.error };

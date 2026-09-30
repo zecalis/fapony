@@ -390,6 +390,46 @@ test("testPlanSeedExistingInScope", () => {
   console.log("  ✓ plan-seed --scope lists existing exports in the PLAN");
 });
 
+test("testPlanSeedExistingInScopeListsRustPubItems", () => {
+  // SPEC §5: a Rust scope lists its `pub` items (column 0 only); private items
+  // and `impl` methods stay out, and a .rs file does not enter the import graph.
+  const dir = mkdtempSync(join(tmpdir(), "fapony-plan-seed-rust-"));
+  try {
+    mkdirSync(join(dir, "core", "src"), { recursive: true });
+    writeFileSync(
+      join(dir, "core", "src", "lookup.rs"),
+      [
+        "pub fn resolve() {}",
+        "pub(crate) struct KeyUse;",
+        "pub async fn fetch() {}",
+        "pub const MAX: usize = 3;",
+        "fn private() {}",
+        "impl KeyUse {",
+        "    pub fn method(&self) {}",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    withCwd(dir, () => {
+      captureLogs(() => cmdPlanSeed(["rs", "--scope", "core/src"]));
+      const plan = readFileSync(
+        join(dir, ".fapony", "plan", "PLAN-rs.md"),
+        "utf-8",
+      );
+      assert.ok(
+        plan.includes(
+          "core/src/lookup.rs — resolve() · KeyUse · fetch() · MAX",
+        ),
+        plan,
+      );
+      assert.ok(!plan.includes("private") && !plan.includes("method"));
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  console.log("  ✓ plan-seed --scope lists Rust pub items");
+});
+
 test("testPlanSeedExistingInScopePlaceholders", () => {
   // No exports in scope → honest one-liner, not an empty heading.
   const dir = mkdtempSync(join(tmpdir(), "fapony-plan-seed-noexport-"));
