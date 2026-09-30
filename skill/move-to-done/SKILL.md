@@ -12,14 +12,11 @@ You are about to move a PLAN that has been shipped to the archive.
 0. **Report in lines, not paragraphs** — what moved, what the inbound-link sweep found, what
    needs the user. Never narrate the steps; the commands are already in the transcript.
 
-1. **PLAN must have shipped header** — regex: `^> ✅ \*\*.*shipped.*\*\*$`
-   If missing, add it yourself, don't ask — invoking this skill *is* the ship claim (the user
-   has already verified the work landed; this step is paperwork). Replace the plan's
-   status/header line with `> ✅ **shipped <YYYY-MM-DD>** (<hash>)` — today's date plus
-   `git rev-parse --short HEAD`. The date is load-bearing: it is the *only* record of when this
-   shipped that a later question can read, since the filename does not carry one.
-   Say in the summary that you stamped it, so a wrong HEAD is visible and correctable.
-   STOP only if there's no git repo / no commits to hash from.
+1. **Ready = evidence, not a header** — `fapony plan sweep <PLAN-foo.md>` says whether it is: a
+   `✅ shipped` header, or every chunk ticked with a commit the default branch holds. Ready
+   without a header → `--apply` stamps `> ✅ **shipped <date>** (<sha on default branch>)` itself;
+   say in the summary that it did. Not ready → chunk missing a tick/sha, or the sha is on no
+   default-branch line yet: finish or merge first, don't hand-stamp. STOP only if there's no git repo.
 
  1b. **A plan can also leave `plan/` without shipping** — it got absorbed into another plan, or the
    redesign deleted the thing it planned. That is normal during a UI/UX sweep and is the main
@@ -56,7 +53,7 @@ You are about to move a PLAN that has been shipped to the archive.
    ```bash
    fapony plan sweep <PLAN-foo.md> --apply
    ```
-    It refuses if the file lacks a shipped header or fael still has an open issue about it or an open handoff row (`plan:<name>:chunk-N`, any kind) — general notes and decisions travel with the plan.
+    It refuses if the plan is not ready, fael still has an open issue about it, or an open handoff row (`plan:<name>:chunk-N`) whose chunk is not ticked — general notes and decisions travel with the plan. A handoff whose chunk is already ticked+verified is stale: sweep prints its `fael close <id> "…"` line — run it (fapony never writes fael).
    If git refuses ("not under version control" — `.fapony/` is gitignored in this repo), plain
    `mv` instead; there's nothing to commit for an untracked path, so skip step 4 in that case.
    The filename gets no date prefix — the ship date is already in the header (step 1).
@@ -86,11 +83,10 @@ You are about to move a PLAN that has been shipped to the archive.
 ## Example
 
 ```
-Input: .fapony/plan/PLAN-kickoff.md, no shipped header yet
+Input: .fapony/plan/PLAN-kickoff.md, all chunks ticked + merged, no shipped header
 Steps:
-1. stamp header: > ✅ **shipped 2026-09-13** (a1b2c3)
-2. fapony plan sweep .fapony/plan/PLAN-kickoff.md --apply
-   → moved, links rewritten
+1. fapony plan sweep .fapony/plan/PLAN-kickoff.md --apply
+   → stamped ✅ shipped 2026-09-13 (a1b2c3), moved, links rewritten, `fael close …` lines for stale handoffs
 3. spec: untouched, stays in .fapony/spec/
 4. commit
 5. (clean ship — the move is in git, nothing more to file)
@@ -106,7 +102,6 @@ A ship worth a note looks like this instead:
 
 ## If fail
 
-- No git repo / no commits (can't derive a shipped hash) → tell user: "Add header > ✅ **shipped** (<hash>) first"
-- Stamped the header yourself → always say which hash you used
+- No git repo / no default branch → tell user: "Add header > ✅ **shipped** (<hash>) first"
 - plan sweep refuses (open fael issue) → fix and `fael close` it, or `MEM_FORCE=1`
 - Too many inbound links → plan sweep reports them; too many to fix → report the list
