@@ -135,30 +135,39 @@ export const planLocation = (base: string): "plan" | "done" | null => {
   return null;
 };
 
-// checkbox tally of the first ## section only — same contract as kickoff's
+// checkbox lines of the first ## section only — same contract as kickoff's
 // readPlanSectionItems (kept local: read.ts imports from this file, so an
-// import back would be a cycle). Counts only, no text.
-export const countFirstSection = (
+// import back would be a cycle). Whole lines, so callers can read the tick.
+export const firstSectionItems = (
   file: string,
-): { checked: number; unchecked: number } => {
+): { checked: string[]; unchecked: string[] } => {
+  const out: { checked: string[]; unchecked: string[] } = {
+    checked: [],
+    unchecked: [],
+  };
   try {
     const text = readFileSync(file, "utf8");
     const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---/, "");
     const start = body.search(/^##\s+/m);
-    if (start < 0) return { checked: 0, unchecked: 0 };
+    if (start < 0) return out;
     const rest = body.slice(start);
     const next = rest.slice(3).search(/^##\s+/m);
     const block = next < 0 ? rest : rest.slice(0, next + 3);
-    let checked = 0;
-    let unchecked = 0;
     for (const line of block.split("\n")) {
-      if (/^\s*[-*]\s+\[\s\]\s+.+$/.test(line)) unchecked++;
-      else if (/^\s*[-*]\s+\[[xX]\]\s+.+$/.test(line)) checked++;
+      if (/^\s*[-*]\s+\[\s\]\s+.+$/.test(line)) out.unchecked.push(line);
+      else if (/^\s*[-*]\s+\[[xX]\]\s+.+$/.test(line)) out.checked.push(line);
     }
-    return { checked, unchecked };
   } catch {
-    return { checked: 0, unchecked: 0 };
+    // unreadable file — nothing ticked
   }
+  return out;
+};
+
+export const countFirstSection = (
+  file: string,
+): { checked: number; unchecked: number } => {
+  const { checked, unchecked } = firstSectionItems(file);
+  return { checked: checked.length, unchecked: unchecked.length };
 };
 
 // dep-graph issues over active plan files: dangling blocked_by/blocks refs,
@@ -458,14 +467,82 @@ export const countPlainTextMentions = (
   return count;
 };
 
-// shared with the dashboard (now/kickoff) — plan/ files with a shipped header but not yet moved into done/
+// No ✅ header needed: every first-section chunk ticked, each tick citing a
+// commit (or `(#PR)`) that the default branch holds. git is the evidence;
+// blocked/superseded/tracker plans never qualify (same exclusions as the header).
+export const shippedByEvidence = (file: string): boolean => {
+  const fm = parsePlanFrontmatter(file);
+  if (fm.kind === "tracker" || fm.status === "blocked") return false;
+  if (fm.status === "superseded") return false;
+  const { checked, unchecked } = firstSectionItems(file);
+  const base = defaultBranch(root);
+  if (!checked.length || unchecked.length || !base) return false;
+  const onDefault = (sha: string, cwd: string) =>
+    gitOk(["merge-base", "--is-ancestor", sha, base], cwd);
+  return checked.every((line) => {
+    const r = checkTickedLine(line, root, onDefault);
+    return r.cited > 0 && !r.missing.length && !r.diverged.length;
+  });
+};
+
+// shared with the dashboard (now/kickoff) — plan/ files ready to move into done/:
+// a ✅ shipped header, or a fully ticked + verified checklist
 export const shippedNotMoved = (): string[] => {
   const dir = planDir;
   if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isFile() && e.name.endsWith(".md"))
     .map((e) => e.name)
-    .filter((name) => hasShippedHeader(join(dir, name)));
+    .filter(
+      (name) =>
+        hasShippedHeader(join(dir, name)) || shippedByEvidence(join(dir, name)),
+    );
+};
+
+// An open handoff `plan:<name>:chunk-N` is stale once chunk N is ticked with a
+// commit git finds — the work it hands off already shipped, so it must not
+// block the move (the caller prints the `fael close` line instead). A chunk
+// not ticked (or ticked without proof) keeps its handoff live.
+export const splitHandoffs = (
+  planPath: string,
+): { live: MemRow[]; stale: { row: MemRow; ref: string; n: string }[] } => {
+  const { checked } = firstSectionItems(planPath);
+  const live: MemRow[] = [];
+  const stale: { row: MemRow; ref: string; n: string }[] = [];
+  for (const row of openHandoffRowsFor(planPath)) {
+    const n = /:chunk-(\d+)$/.exec(row.key ?? "")?.[1];
+    const line = checked.find((l) => /\bchunk[\s-]*(\d+)/i.exec(l)?.[1] === n);
+    const r = line && checkTickedLine(line, root);
+    if (
+      n &&
+      line &&
+      r &&
+      r.cited > 0 &&
+      !r.missing.length &&
+      !r.diverged.length
+    )
+      stale.push({
+        row,
+        n,
+        ref: extractShas(line)[0] ?? /\(#\d+\)/.exec(line)?.[0] ?? "",
+      });
+    else live.push(row);
+  }
+  return { live, stale };
+};
+
+// `> ✅ **shipped <date>** (<sha>)` replaces the **Status:** text (keeps the
+// rest of that line, e.g. Created); no Status line → goes under the # title.
+const stampShipped = (file: string, sha: string): void => {
+  const stamp = `> ✅ **shipped ${new Date().toLocaleDateString("en-CA")}** (${sha})`;
+  const src = readFileSync(file, "utf8");
+  const status = /^>\s*\*\*Status:\*\*[^·\n]*?(?=\s*·|$)/m;
+  writeFileSync(
+    file,
+    status.test(src)
+      ? src.replace(status, stamp)
+      : src.replace(/^(#\s.*)$/m, `$1\n\n${stamp}`),
+  );
 };
 
 export const cmdPlanSweep = (a: string[]) => {
@@ -489,7 +566,7 @@ export const cmdPlanSweep = (a: string[]) => {
         const openBugs = openRowsFor(spec).filter(
           (r) => r.kind === "bug",
         ).length;
-        const openHandoffs = openHandoffRowsFor(spec).length;
+        const openHandoffs = splitHandoffs(spec).live.length;
         const warn =
           openBugs + openHandoffs
             ? `  ⚠ ${openBugs} open issue(s) + ${openHandoffs} open handoff(s) (fael) — close before moving`
@@ -542,7 +619,9 @@ export const cmdPlanSweep = (a: string[]) => {
   const fm = parsePlanFrontmatter(src);
   // superseded = closed without shipping; done/ is where closed plans live
   const superseded = fm.status === "superseded";
-  const shipped = hasShippedHeader(src) || superseded;
+  const headed = hasShippedHeader(src);
+  const evidence = !headed && !superseded && shippedByEvidence(src);
+  const shipped = headed || superseded || evidence;
   if (!apply) {
     if (fm.status === "blocked") {
       console.log(
@@ -564,7 +643,7 @@ export const cmdPlanSweep = (a: string[]) => {
   // but then run --apply directly and skip everything → risky when an agent ships automatically with no human check, so hard block
   if (!shipped && !process.env.MEM_FORCE) {
     console.error(
-      `${name}: no ✅ shipped header and not status:superseded — refusing to move (MEM_FORCE=1 to override)`,
+      `${name}: no ✅ shipped header, chunks not all ticked+verified on the default branch, and not status:superseded — refusing to move (MEM_FORCE=1 to override)`,
     );
     process.exit(1);
   }
@@ -573,7 +652,7 @@ export const cmdPlanSweep = (a: string[]) => {
   // work — and so is an open handoff row (`plan:<name>:chunk-N`, any kind),
   // which the old kind-only check let straight through to done/.
   const openBugs = openRowsFor(rel(src)).filter((r) => r.kind === "bug");
-  const openHandoffs = openHandoffRowsFor(rel(src));
+  const { live: openHandoffs, stale: staleHandoffs } = splitHandoffs(src);
   if ((openBugs.length || openHandoffs.length) && !process.env.MEM_FORCE) {
     const lines = [
       ...openBugs.map((r) => `  [${r.id}] ${r.kind} ${r.text}`),
@@ -590,6 +669,15 @@ export const cmdPlanSweep = (a: string[]) => {
   if (existsSync(dst)) {
     console.error(`${rel(dst)} already exists`);
     process.exit(1);
+  }
+
+  if (evidence) {
+    const base = defaultBranch(root);
+    stampShipped(
+      src,
+      (base && gitOut(["rev-parse", "--short", base], root)) || "",
+    );
+    console.log(`stamped ✅ shipped header (${base}) in ${rel(src)}`);
   }
 
   // ponytail: a file just written this round may not be git add'ed yet — `git mv` fails silently (exit 128, no throw)
@@ -633,6 +721,11 @@ export const cmdPlanSweep = (a: string[]) => {
   }
 
   console.log(`moved ${rel(src)} → ${rel(dst)}`);
+  // fapony never writes fael — hand the agent the closing commands
+  for (const { row, n, ref } of staleHandoffs)
+    console.log(
+      `fael close ${row.id} "chunk ${n} shipped ${ref}"  # handoff ${row.key} — chunk already ticked`,
+    );
   console.log(`links rewritten inside the file: ${ownLinks}`);
   console.log(
     `inbound links rewritten: ${inbound} in ${inboundFiles} file(s) (scanned ${rel(planBase)}/**)`,
@@ -802,6 +895,7 @@ export const countPrCommits = (pr: string, cwd: string): number => {
 export const checkTickedLine = (
   line: string,
   cwd: string,
+  held: (sha: string, cwd: string) => boolean = isHeldByRef,
 ): { missing: string[]; diverged: string[]; cited: number } => {
   const missing: string[] = [];
   const diverged: string[] = [];
@@ -834,7 +928,7 @@ export const checkTickedLine = (
   for (const [sha, st] of status) {
     if (st === "commit") {
       cited++;
-      if (!isHeldByRef(sha, cwd)) diverged.push(sha);
+      if (!held(sha, cwd)) diverged.push(sha);
     } else if (st === "object") {
       cited++;
       missing.push(sha);
@@ -866,7 +960,7 @@ export const cmdPlanCheck = (a: string[]) => {
   const shipped = shippedNotMoved();
   for (const name of shipped) {
     issues.push(
-      `${name} — has a shipped header but was never archived\n   fix: ${planSweepCmd} ${name} --apply`,
+      `${name} — shipped (header or verified ticks) but never archived\n   fix: ${planSweepCmd} ${name} --apply`,
     );
   }
 
