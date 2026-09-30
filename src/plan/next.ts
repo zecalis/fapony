@@ -65,9 +65,10 @@ const closureHint = (checked: string[]): string | null => {
         ? `(${missing[0]}) names no single default-branch commit`
         : `${missing[0]} is not in git`
     } — nothing proves it closed`;
-  // the squash commit exists, only the tick is stale: `--fix` repoints it
+  // the squash commit exists, only the tick is stale: `--fix` repoints it —
+  // unless the PR squashed several commits (no subject/patch match): cite `(#N)`
   if (diverged.length)
-    return `⚠ ${who}${diverged[0]} is held by no branch (squashed, branch deleted?) — fix: fapony plan check --fix`;
+    return `⚠ ${who}${diverged[0]} is held by no branch (squashed, branch deleted?) — fix: fapony plan check --fix, or append the merged PR's \`(#N)\` to the tick`;
   if (!cited) return `⚠ ${who}cites no commit — nothing to verify it closed`;
   return null;
 };
