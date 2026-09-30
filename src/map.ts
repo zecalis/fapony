@@ -400,11 +400,35 @@ const RS_KINDS: Record<string, ExportKind> = {
   mod: "namespace",
 };
 
+// `pub use a::{B, c as D};` (may span lines up to `;`) → B, D. Globs and
+// `self` name nothing. ponytail: nested `{}` groups are flattened — the last
+// path segment is still the name.
+const RS_PUB_USE_RE = /^pub(?:\([^)]*\))?\s+use\s/;
+
 function extractRustExports(source: string): ExportScan {
   const symbols: ExportSymbol[] = [];
-  source.split("\n").forEach((raw, i) => {
+  const lines = source.split("\n");
+  lines.forEach((raw, i) => {
     const m = raw.match(RS_PUB_RE);
     if (m) symbols.push({ name: m[2], line: i + 1, kind: RS_KINDS[m[1]] });
+    if (!RS_PUB_USE_RE.test(raw)) return;
+    const code = (l: string) => l.replace(/\/\/.*/, "");
+    let stmt = code(raw);
+    for (let j = i + 1; !stmt.includes(";") && j < lines.length; j++)
+      stmt += ` ${code(lines[j])}`;
+    const body = stmt.slice(
+      stmt.search(/\suse\s/) + 5,
+      stmt.indexOf(";") >>> 0,
+    );
+    for (const part of body.split(/[{},]/)) {
+      const name =
+        part
+          .split(/\s+as\s+|::/)
+          .pop()
+          ?.trim() ?? "";
+      if (/^[A-Za-z_]\w*$/.test(name) && name !== "self")
+        symbols.push({ name, line: i + 1, kind: "re-export" });
+    }
   });
   return { symbols, error: null };
 }

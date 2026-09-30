@@ -403,6 +403,12 @@ test("testPlanSeedExistingInScopeListsRustPubItems", () => {
         "pub(crate) struct KeyUse;",
         "pub async fn fetch() {}",
         "pub const MAX: usize = 3;",
+        "pub use matching::glob;",
+        "pub use compact::{Opts as CompactOpts, compact, self};",
+        "pub(crate) use query::{",
+        "    Filter, // the filter",
+        "    nested::{deep, *},",
+        "};",
         "fn private() {}",
         "impl KeyUse {",
         "    pub fn method(&self) {}",
@@ -418,7 +424,7 @@ test("testPlanSeedExistingInScopeListsRustPubItems", () => {
       );
       assert.ok(
         plan.includes(
-          "core/src/lookup.rs — resolve() · KeyUse · fetch() · MAX",
+          "core/src/lookup.rs — resolve() · KeyUse · fetch() · MAX · glob · CompactOpts · compact · Filter · deep",
         ),
         plan,
       );
