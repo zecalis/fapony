@@ -5,6 +5,7 @@ import { test } from "bun:test";
 // doc body, refusal on collision, anchor echo. No LLM and no chunk-cutting.
 
 import assert from "node:assert";
+import { execSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -199,4 +200,19 @@ test("testPlanAdoptRefusesPlanShapedSource", () => {
     });
   });
   console.log("  ✓ plan adopt refuses a file that is already a PLAN");
+});
+
+test("testPlanAdoptResolvesAgainstCwdFirst", () => {
+  withFixture((dir) => {
+    execSync("git init -q", { cwd: dir });
+    mkdirSync(join(dir, "apps", "x"), { recursive: true });
+    writeFileSync(join(dir, "apps", "x", "notes.md"), DOC);
+    const sub = join(dir, "apps", "x");
+    withCwd(sub, () => {
+      initPlanStore(sub);
+      const { errs, code } = runAdopt(["notes.md"]);
+      assert.equal(code, null, errs);
+    });
+  });
+  console.log("  ✓ plan adopt resolves a relative doc against cwd first");
 });

@@ -14,6 +14,8 @@ import { mentionsOfFiles, resolvePlan } from "./resolve.js";
 import { doneDir, planBase, planDir, rel, root } from "./store.js";
 import {
   checkTickedLine,
+  chunkLabel,
+  firstSectionItems,
   openRowsFor,
   parsePlanFrontmatter,
   planKeyName,
@@ -24,35 +26,13 @@ import {
 const HANDOFF_LIMIT = 5;
 const TEXT_MAX = 200;
 
-/** Checked + unchecked items of the first `##` section (the TL;DR). */
+/** First-section items with the `- [ ] ` / `- [x] ` marker cut off. */
 const readPlanSectionItems = (
   planPath: string,
 ): { checked: string[]; unchecked: string[] } => {
-  try {
-    const body = readFileSync(planPath, "utf8").replace(
-      /^---\r?\n[\s\S]*?\r?\n---/,
-      "",
-    );
-    const start = body.search(/^##\s+/m);
-    if (start < 0) return { checked: [], unchecked: [] };
-    const rest = body.slice(start);
-    const next = rest.slice(3).search(/^##\s+/m);
-    const block = next < 0 ? rest : rest.slice(0, next + 3);
-    const checked: string[] = [];
-    const unchecked: string[] = [];
-    for (const line of block.split("\n")) {
-      let m = /^\s*[-*]\s+\[\s\]\s+(.+)$/.exec(line);
-      if (m) {
-        unchecked.push(m[1].trim());
-        continue;
-      }
-      m = /^\s*[-*]\s+\[[xX]\]\s+(.+)$/.exec(line);
-      if (m) checked.push(m[1].trim());
-    }
-    return { checked, unchecked };
-  } catch {
-    return { checked: [], unchecked: [] };
-  }
+  const strip = (l: string) => l.replace(/^\s*[-*]\s+\[[\sxX]\]\s+/, "").trim();
+  const { checked, unchecked } = firstSectionItems(planPath);
+  return { checked: checked.map(strip), unchecked: unchecked.map(strip) };
 };
 
 // One line saying whether the last ticked chunk actually closed. Verified
@@ -71,12 +51,6 @@ const closureHint = (checked: string[]): string | null => {
   return null;
 };
 
-/** "chunk 2 — …" / "**chunk 2** — …" / "chunk-2" → "2"; the number a
- *  `plan:<name>:chunk-<n>` key carries. Digits only, so markdown around the
- *  label (`**`, `_`) never leaks into the key. */
-const chunkLabel = (item: string): string | null =>
-  /\bchunk[\s-]*(\d+)/i.exec(item)?.[1] ?? null;
-
 const readPlanTitle = (planPath: string): string => {
   try {
     return /^#\s+(.+)$/m.exec(readFileSync(planPath, "utf8"))?.[1].trim() ?? "";
@@ -90,7 +64,7 @@ const isHighPriority = (planPath: string): boolean => {
     const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(
       readFileSync(planPath, "utf8").slice(0, 1024),
     );
-    return !!m && /^\s*priority\s*:\s*high\s*$/m.test(m[1]);
+    return !!m && /^\s*priority\s*:\s*high\s*(#.*)?$/m.test(m[1]);
   } catch {
     return false;
   }
@@ -108,7 +82,7 @@ const specLine = (planPath: string): string | null => {
     const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(
       readFileSync(planPath, "utf8"),
     )?.[1];
-    const name = front && /^spec:\s*(\S+)\s*$/m.exec(front)?.[1];
+    const name = front && /^spec:\s*([^\s#]\S*)\s*(#.*)?$/m.exec(front)?.[1];
     if (!name) return null;
     const spec = join(planBase, "spec", basename(name));
     return existsSync(spec)

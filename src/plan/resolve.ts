@@ -5,7 +5,7 @@
 // fael: `plan:x` / `plan:x:chunk-3` are just spellings of PLAN-x.md.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { doneDir, planBase, planDir, root } from "./store.js";
 
 export type Resolved =
@@ -34,7 +34,7 @@ const listDocs = (): { file: string; key: string }[] =>
 /** PLAN-x.md · PLAN-x · x · plan:x · plan:x:chunk-3 · any path · a unique
  *  substring. plan/ wins over done/ on an exact name. */
 export const resolvePlan = (arg: string): Resolved => {
-  const direct = [arg, join(root, arg)].find(
+  const direct = [resolve(arg), join(root, arg)].find(
     (p) => p.endsWith(".md") && existsSync(p),
   );
   if (direct) return { ok: true, file: direct, chunk: null };
