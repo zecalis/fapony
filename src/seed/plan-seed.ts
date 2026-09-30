@@ -284,11 +284,11 @@ _(agent fills in)_
 _(agent fills in)_
 
 ## 6. Steps (what in which order)
-One step = one chunk = one session: finish it, close it, **stop** — starting the next step in the same session is what rule 9 forbids.
+**Chunks → sessions → PRs:** one session = one branch = one squash-merged PR, up to 3 chunks of this plan, one commit per chunk · a chunk gets its own PR when it changes a DB schema/migration or persisted format, touches auth/permissions/security or money logic, changes a public API/CLI contract, or needs a design review · close each chunk fully (tick + handoff note + commit) before the next; stop at anything that needs a human decision · a chunk that must build on an unmerged branch is stacked (PR base = that branch; once it merges: \`git rebase --onto origin/main <lower> <upper>\`).
 
 1. _(agent fills in — each step must be verifiable)_
 
-**Closing a step:** tick TL;DR with sha · \`git commit\` files only · \`fael add note "<what chunk N+1 must know>" --files <f1,f2>,${anchor} --key ${anchor}:chunk-<N+1>\` · next opens with \`fapony plan PLAN-${name}.md\` (unchecked chunks + those notes).
+**Closing a step:** tick TL;DR with sha (+ PR number once it exists) · \`git commit\` files only · \`fael add note "<what chunk N+1 must know>" --files <f1,f2>,${anchor} --key ${anchor}:chunk-<N+1>\` · next opens with \`fapony plan PLAN-${name}.md\` (unchecked chunks + those notes).
 - [ ] handoff: the mem note is the handoff — this box only opts the plan into the Stop-hook check
 
 ## 7. Examples

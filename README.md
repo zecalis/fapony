@@ -29,7 +29,7 @@ the loop: fapony says *what's next*, fael says *what the last session learned*.
 | Writes | plan files, only when told (`plan sweep --apply`) | its log under `.fael/` in your repo |
 | Install | `npm i -g @zecalis/fapony && fapony install` | `npm i -g @zecalis/fael && fael install` |
 
-One chunk, one session:
+One session = one PR of up to 3 chunks (the exact rule is the §6 line `plan-seed` writes into every PLAN):
 
 ```mermaid
 flowchart TD
@@ -39,8 +39,9 @@ flowchart TD
     L --> E["edit<br/>fael read hook: rows about that file"]
     E --> C["tick the chunk with its sha → commit"]
     C --> N["fael add note 'what chunk N+1 must know'<br/>--files f1,plan:x --key plan:x:chunk-N+1"]
+    N -->|next chunk — ≤ 3 per session, none that needs its own PR| P
     N --> X([stop — don't drag the transcript along])
-    X -->|next chunk| S
+    X -->|next session| S
     C -->|last chunk| W["fapony plan sweep PLAN-x.md --apply<br/>git mv into .fapony/done/"]
 ```
 
