@@ -66,7 +66,10 @@ export function cmdPlanAdopt(a: string[]): void {
     console.error(usage);
     process.exit(a.includes("--help") || a.includes("-h") ? 0 : 1);
   }
-  const src = resolve(root, target);
+  // cwd first (monorepo subdir), then the repo root — resolvePlan's order
+  const src =
+    [resolve(target), resolve(root, target)].find((p) => existsSync(p)) ??
+    resolve(target);
   if (!existsSync(src)) {
     console.error(`plan adopt: not found: ${target}`);
     process.exit(1);

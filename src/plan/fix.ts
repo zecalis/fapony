@@ -13,6 +13,7 @@ import {
   gitOut,
   isOnDefault,
   mdFiles,
+  TICK_RE,
 } from "./sweep.js";
 
 // ponytail: recent 300 commits of the default branch, add a cap knob when a plan outlives it
@@ -37,10 +38,20 @@ const patchIds = (diff: string): string[][] => {
 let window: string[][] | null = null;
 
 /** Commits on the default branch standing in for `sha` (squashed): same
- *  subject + ` (#N)`, else same patch-id. Caller repoints only on length 1. */
+ *  subject + ` (#N)`, else same patch-id. Caller repoints only on length 1.
+ *  A squash of `sha` comes after it — an ancestor or an older commit is a
+ *  namesake ("chore: lint (#5)" vs a live branch's own "chore: lint"). */
 export const squashSuccessors = (sha: string): string[] => {
   const base = defaultBranch(root);
   if (!base) return [];
+  const at = (c: string) =>
+    Number(gitOut(["log", "-1", "--format=%ct", c], root));
+  const since = at(sha);
+  const after = (c: string) =>
+    at(c) >= since &&
+    Bun.spawnSync(["git", "merge-base", "--is-ancestor", c, sha], {
+      cwd: root,
+    }).exitCode !== 0;
   const subject = gitOut(["log", "-1", "--format=%s", sha], root);
   const bySubject = subject
     ? defaultLog(root)
@@ -51,14 +62,18 @@ export const squashSuccessors = (sha: string): string[] => {
           );
         })
         .map((l) => l.slice(0, l.indexOf(" ")))
+        .filter(after)
     : [];
   if (bySubject.length === 1) return bySubject;
   const mine = patchIds(gitOut(["show", sha], root))[0]?.[0];
   window ??= patchIds(
-    gitOut(["log", "-p", `-n${PATCH_ID_WINDOW}`, base], root),
+    gitOut(["log", "-p", `-n${PATCH_ID_WINDOW}`, base, "--"], root),
   );
   const byPatch = mine
-    ? window.filter(([id]) => id === mine).map(([, c]) => c)
+    ? window
+        .filter(([id]) => id === mine)
+        .map(([, c]) => c)
+        .filter(after)
     : [];
   return byPatch.length === 1
     ? byPatch
@@ -76,7 +91,7 @@ const fixTicks = (files: string[]): string[] => {
     readFileSync(f, "utf8")
       .split("\n")
       .forEach((line, i) => {
-        if (!/^\s*-\s\[x\]/.test(line)) return;
+        if (!TICK_RE.test(line)) return;
         const offMain = checkTickedLine(line, root, isOnDefault).diverged;
         if (!offMain.length) return;
         const lost = new Set(checkTickedLine(line, root).diverged);

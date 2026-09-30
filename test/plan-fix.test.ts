@@ -136,3 +136,31 @@ test("testFixRepointsSquashedTickWhoseBranchStillLives", () => {
   });
   console.log("  ✓ --fix repoints a squashed tick even while its branch lives");
 });
+
+test("testFixSkipsLiveBranchNamesakeOfOlderSquash", () => {
+  withTempRepo((dir) => {
+    squashed(dir, "chore: lint"); // main: "chore: lint (#12)"
+    const base = git(dir, "branch --show-current");
+    git(dir, "switch -c feat2");
+    writeFileSync(join(dir, "z.txt"), "z\n");
+    git(dir, "add z.txt");
+    git(dir, 'commit -m "chore: lint"');
+    const mine = git(dir, "rev-parse --short=7 HEAD");
+    git(dir, `switch ${base}`);
+    const file = writePlan(dir, `- [x] chunk 1 — a (${mine})`);
+    const before = readFileSync(file, "utf8");
+    assert.match(check(dir, "--fix").out, /nothing to repair/);
+    assert.equal(readFileSync(file, "utf8"), before);
+  });
+  console.log("  ✓ --fix never repoints in-flight work to an older namesake");
+});
+
+test("testCapitalXTickIsCheckedAndFixed", () => {
+  withTempRepo((dir) => {
+    const { f, sq } = squashed(dir);
+    writePlan(dir, `- [X] chunk 1 — a (${f})`);
+    assert.match(check(dir).out, /no branch holds/);
+    assert.match(check(dir, "--fix").out, new RegExp(`tick ${f} → ${sq}`));
+  });
+  console.log("  ✓ `- [X]` ticks are checked and fixed like `- [x]`");
+});

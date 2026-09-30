@@ -64,7 +64,7 @@ const isHighPriority = (planPath: string): boolean => {
     const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(
       readFileSync(planPath, "utf8").slice(0, 1024),
     );
-    return !!m && /^\s*priority\s*:\s*high\s*$/m.test(m[1]);
+    return !!m && /^\s*priority\s*:\s*high\s*(#.*)?$/m.test(m[1]);
   } catch {
     return false;
   }
@@ -82,7 +82,7 @@ const specLine = (planPath: string): string | null => {
     const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(
       readFileSync(planPath, "utf8"),
     )?.[1];
-    const name = front && /^spec:\s*(\S+)\s*$/m.exec(front)?.[1];
+    const name = front && /^spec:\s*([^\s#]\S*)\s*(#.*)?$/m.exec(front)?.[1];
     if (!name) return null;
     const spec = join(planBase, "spec", basename(name));
     return existsSync(spec)

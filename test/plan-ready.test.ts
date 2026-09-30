@@ -7,7 +7,16 @@ import { test } from "bun:test";
 
 import assert from "node:assert";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withFakeFael, withTempRepo } from "./helpers.js";
 
@@ -198,4 +207,126 @@ test("testFinalChunkHandoffIsStaleOnceAllTicked", () => {
     });
   });
   console.log("  ✓ chunk-<last+1> handoff is stale once every chunk ships");
+});
+
+const run = (cwd: string, ...args: string[]) => {
+  const p = Bun.spawnSync(["bun", FAPONY, "plan", ...args], {
+    cwd,
+    env: process.env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  return { code: p.exitCode, out: p.stdout.toString() + p.stderr.toString() };
+};
+
+test("testApplyMovesSymlinkedIgnoredFaponyAndStampsAfter", () => {
+  withTempRepo((dir) => {
+    const { onMain } = repo(dir);
+    // this repo's own layout: .fapony/ gitignored + a symlink out of the repo
+    const store = mkdtempSync(join(tmpdir(), "fapony-store-"));
+    try {
+      writeFileSync(join(dir, ".gitignore"), ".fapony\n");
+      symlinkSync(store, join(dir, ".fapony"));
+      plan(dir, [`- [x] chunk 1 — a (${onMain})`]);
+      const r = sweep(dir, "--apply");
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.out, /plain rename/);
+      assert.ok(!existsSync(join(store, "plan/PLAN-a.md")));
+      assert.match(
+        readFileSync(join(store, "done/PLAN-a.md"), "utf8"),
+        new RegExp(`✅ \\*\\*shipped [^*]+\\*\\* \\(${onMain}\\)`),
+      );
+    } finally {
+      rmSync(store, { recursive: true, force: true });
+    }
+  });
+  console.log(
+    "  ✓ symlinked + gitignored .fapony/ → plain rename, stamp on done/",
+  );
+});
+
+test("testApplyPathFormRewritesInboundLinks", () => {
+  withTempRepo((dir) => {
+    const { onMain } = repo(dir);
+    plan(dir, [`- [x] chunk 1 — a (${onMain})`]);
+    writeFileSync(
+      join(dir, ".fapony/plan/PLAN-b.md"),
+      "# B\n\n[a](PLAN-a.md)\n",
+    );
+    const r = run(dir, "sweep", ".fapony/plan/PLAN-a.md", "--apply");
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /inbound links rewritten: 1/);
+    assert.match(
+      readFileSync(join(dir, ".fapony/plan/PLAN-b.md"), "utf8"),
+      /\[a\]\(\.\.\/done\/PLAN-a\.md\)/,
+    );
+  });
+  console.log("  ✓ a path-form target rewrites inbound links too");
+});
+
+test("testTemplateCommentsDoNotHideBlockedOrTracker", () => {
+  withTempRepo((dir) => {
+    const { onMain } = repo(dir);
+    for (const fm of [
+      "status: blocked   # active | blocked | superseded",
+      "kind: tracker     # `tracker` for a checklist that never finishes",
+    ]) {
+      plan(dir, [`- [x] chunk 1 — a (${onMain})`]);
+      const f = join(dir, ".fapony/plan/PLAN-a.md");
+      writeFileSync(f, `---\n${fm}\n---\n${readFileSync(f, "utf8")}`);
+      assert.doesNotMatch(sweep(dir).out, /ready to move/, fm);
+    }
+  });
+  console.log(
+    "  ✓ inline # comments in frontmatter keep blocked/tracker plans put",
+  );
+});
+
+test("testStampIgnoresTickOrderAcrossMerges", () => {
+  withTempRepo((dir) => {
+    const base = git(dir, "branch --show-current");
+    const branch = (name: string): string => {
+      git(dir, `switch -c ${name} ${base}`);
+      writeFileSync(join(dir, `${name}.txt`), `${name}\n`);
+      git(dir, `add ${name}.txt`);
+      git(dir, `commit -m "${name}"`);
+      return git(dir, "rev-parse --short=7 HEAD");
+    };
+    const x = branch("x");
+    const y = branch("y");
+    git(dir, `switch ${base}`);
+    git(dir, 'merge --no-ff x -m "merge x"');
+    git(dir, 'merge --no-ff y -m "merge y"');
+    const stamps = [
+      [x, y],
+      [y, x],
+    ].map(([a, b]) => {
+      plan(dir, [`- [x] chunk 1 — a (${a})`, `- [x] chunk 2 — b (${b})`]);
+      return /stamps ✅ shipped (\w+)/.exec(sweep(dir).out)?.[1];
+    });
+    assert.ok(stamps[0]);
+    assert.equal(stamps[0], stamps[1]);
+  });
+  console.log("  ✓ stamp sha does not depend on tick order in merge history");
+});
+
+test("testDefaultBranchNamedLikeAFile", () => {
+  withTempRepo((dir) => {
+    const base = git(dir, "branch --show-current");
+    const onMain = git(dir, "rev-parse --short=7 HEAD");
+    writeFileSync(join(dir, base), "a file named like the branch\n");
+    plan(dir, [`- [x] chunk 1 — a (${onMain})`]);
+    assert.match(sweep(dir).out, /ready to move/);
+  });
+  console.log("  ✓ a root file named main/master does not break evidence");
+});
+
+test("testUnbornHeadStillSeesBranches", () => {
+  withTempRepo((dir) => {
+    const onMain = git(dir, "rev-parse --short=7 HEAD");
+    git(dir, "switch --orphan fresh");
+    plan(dir, [`- [x] chunk 1 — a (${onMain})`]);
+    assert.doesNotMatch(run(dir, "check").out, /no branch holds/);
+  });
+  console.log("  ✓ an unborn HEAD still sees ticks other branches hold");
 });

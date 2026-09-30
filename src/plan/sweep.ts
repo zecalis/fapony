@@ -105,7 +105,8 @@ export const parsePlanFrontmatter = (file: string): PlanFrontmatter => {
           line,
         );
       if (!kv) continue;
-      const v = kv[2].trim() || null;
+      // templates/PLAN.md ships `kind: unit   # tracker …` — the comment is no value
+      const v = kv[2].replace(/\s+#.*$/, "").trim() || null;
       if (kv[1] === "status") out.status = v;
       else if (kv[1] === "kind") out.kind = v;
       else if (kv[1] === "blocked_by") out.blockedByRaw = v;
@@ -160,7 +161,7 @@ export const firstSectionItems = (
     const block = next < 0 ? rest : rest.slice(0, next + 3);
     for (const line of block.split("\n")) {
       if (/^\s*[-*]\s+\[\s\]\s+.+$/.test(line)) out.unchecked.push(line);
-      else if (/^\s*[-*]\s+\[[xX]\]\s+.+$/.test(line)) out.checked.push(line);
+      else if (TICK_RE.test(line)) out.checked.push(line);
     }
   } catch {
     // unreadable file — nothing ticked
@@ -685,25 +686,21 @@ export const cmdPlanSweep = (a: string[]) => {
     process.exit(1);
   }
 
-  if (evidence) {
-    const sha = shippingCommit(src, root);
-    stampShipped(src, sha);
-    console.log(`stamped ✅ shipped header (${sha}) in ${rel(src)}`);
-  }
-
   // ponytail: a file just written this round may not be git add'ed yet — `git mv` fails silently (exit 128, no throw)
   // then the next code hits ENOENT reading a dst that does not exist — always stage first (no-op if already tracked)
   mkdirSync(doneDir, { recursive: true });
   // a repo that gitignores .fapony/ (public repo, private plans) has nothing
-  // for git to move — `git add` refuses an ignored path, so rename instead
-  if (gitOk(["check-ignore", "-q", src], root)) {
+  // for git to move — `git add` refuses an ignored path, and a symlinked
+  // .fapony/ is "beyond a symbolic link" (check-ignore exits 128, not 0) —
+  // so ask the index whether git holds the file after staging, else rename
+  Bun.spawnSync(["git", "add", src], { cwd: root, stderr: "ignore" });
+  if (!gitOk(["ls-files", "--error-unmatch", src], root)) {
     renameSync(src, dst);
     console.log(
       `${rel(src)} is not tracked by git — moved with a plain rename`,
     );
   } else {
-    Bun.spawnSync(["git", "add", src]);
-    const mv = Bun.spawnSync(["git", "mv", src, dst]);
+    const mv = Bun.spawnSync(["git", "mv", src, dst], { cwd: root });
     if (mv.exitCode !== 0) {
       console.error(
         `git mv failed (${mv.stderr.toString().trim()}) — not moved`,
@@ -716,6 +713,13 @@ export const cmdPlanSweep = (a: string[]) => {
   // the sibling layout (plan/ → done/ beside it), so sibling links dangle
   // unless rewritten (see rewriteMovedFileLinks).
   const ownLinks = rewriteMovedFileLinks(dst, srcDir, doneDir);
+
+  // stamped after the move: a failed move must not leave plan/ stamped
+  if (evidence) {
+    const sha = shippingCommit(dst, root);
+    stampShipped(dst, sha);
+    console.log(`stamped ✅ shipped header (${sha}) in ${rel(dst)}`);
+  }
 
   // inbound: every .md under .fapony/ can link here — other active plans,
   // shipped plans in done/ (they reference each other), and specs. Scanning
@@ -811,6 +815,9 @@ export const cmdPlanSweep = (a: string[]) => {
 // Standalone short shas only — lookarounds (not \b) so a 40-char sha never
 // matches on its tail: git resolves leading prefixes, a trailing slice would
 // false-positive as missing.
+/** A ticked checkbox line — `- [x]`, `* [X]`; the one test for every caller. */
+export const TICK_RE = /^\s*[-*]\s+\[[xX]\]\s/;
+
 export const SHA_RE = /(?<![0-9a-f])[0-9a-f]{7,12}(?![0-9a-f])/g;
 
 export const extractShas = (line: string): string[] => line.match(SHA_RE) ?? [];
@@ -874,7 +881,7 @@ const reachable = (cwd: string, revs: string[]): Set<string> =>
     `reach\0${cwd}\0${revs.join(" ")}`,
     () =>
       new Set(
-        gitOut(["rev-list", ...revs], cwd)
+        gitOut(["rev-list", "--ignore-missing", ...revs, "--"], cwd)
           .split("\n")
           .filter(Boolean),
       ),
@@ -899,7 +906,9 @@ export const defaultLog = (cwd: string): string[] =>
   once(`log\0${cwd}`, () => {
     const base = defaultBranch(cwd);
     return base
-      ? gitOut(["log", base, "--format=%H %s"], cwd).split("\n").filter(Boolean)
+      ? gitOut(["log", "--format=%H %s", base, "--"], cwd)
+          .split("\n")
+          .filter(Boolean)
       : [];
   });
 
@@ -985,7 +994,8 @@ export const checkTickedLine = (
 };
 
 // The commit that shipped the plan: the newest default-branch commit its ticks
-// cite (every other cited commit is its ancestor), not main's tip at move time.
+// cite, in the default branch's own log order (so tick order never matters,
+// merge history included) — not main's tip at move time.
 export const shippingCommit = (file: string, cwd: string): string => {
   const fulls = firstSectionItems(file).checked.flatMap((line) => [
     ...[...line.matchAll(/\(#(\d+)\)/g)].flatMap((m) => prCommits(m[1], cwd)),
@@ -993,12 +1003,13 @@ export const shippingCommit = (file: string, cwd: string): string => {
       f.commit && isOnDefault(f.commit, cwd) ? [f.commit] : [],
     ),
   ]);
-  const tip = fulls.length
-    ? gitOut(["merge-base", "--independent", ...new Set(fulls)], cwd).split(
-        "\n",
-      )[0]
+  const cited = new Set(fulls);
+  const tip = defaultLog(cwd).find((l) =>
+    cited.has(l.slice(0, l.indexOf(" "))),
+  );
+  return tip
+    ? gitOut(["rev-parse", "--short", tip.slice(0, tip.indexOf(" "))], cwd)
     : "";
-  return tip ? gitOut(["rev-parse", "--short", tip], cwd) : "";
 };
 
 export const cmdPlanCheck = (a: string[]) => {
@@ -1079,7 +1090,7 @@ export const cmdPlanCheck = (a: string[]) => {
     const relPath = relative(planBase, f);
     const lines = readFileSync(f, "utf8").split("\n");
     lines.forEach((line, i) => {
-      if (!/^\s*-\s\[x\]/.test(line)) return;
+      if (!TICK_RE.test(line)) return;
       closed++;
       const { missing, diverged, cited } = checkTickedLine(line, root);
       if (cited > 0) {
