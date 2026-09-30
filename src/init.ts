@@ -69,20 +69,12 @@ const RULES_SNIPPET = () => `${RULES_MARKER}
 Plans live in .fapony/plan/ (shipped ones in .fapony/done/). Memory — decisions,
 bugs, notes — lives in fael (\`fael add\` / \`fael find\`), not in .fapony/.
 
-A long plan run in one unbroken session accumulates context with nothing to shrink
-it — token cost and coherence both degrade with session length, not with amount of
-work done. Cut at chunk boundaries instead:
-
-Finish a chunk, before starting the next:
-1. Tick its checkbox + stamp the TL;DR, citing the commit sha
-2. Commit — separate from other chunks
-3. \`fael add note "what the next chunk needs" --files f1,f2,plan:x --key plan:x:chunk-<N+1>\`
-   — \`plan:x\` (for PLAN-x.md, lowercase) is what finds the note again; not the
-   plan path, which moves when the plan is archived into done/
-4. Stop. Do not continue to the next chunk in the same session unless told to.
-
-Next chunk, new session — open with \`fapony plan PLAN-x.md\` (unchecked chunks +
-the notes left for it) instead of carrying the old transcript forward.
+How many chunks go in one session/PR, which chunk needs its own PR, and when to
+stop: the §6 line every seeded PLAN carries — the single source, don't restate it
+here. Close each chunk with that PLAN's "Closing a step" line — its handoff is a
+\`fael add note\` on the plan anchor (\`plan:x\`), not the plan path. The next session
+opens with \`fapony plan PLAN-x.md\` (unchecked chunks + the notes left for it)
+instead of carrying the old transcript forward.
 \`fapony plan\` alone lists every active plan; ship one with
 \`fapony plan sweep PLAN-x.md --apply\` (moves it to done/, fixes the links).`;
 
