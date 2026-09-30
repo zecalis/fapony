@@ -38,11 +38,6 @@ export const COMMANDS: CommandInfo[] = [
       "where plans stand: next chunk, adopt a foreign doc, sweep shipped, check",
   },
   {
-    name: "debt",
-    group: "core",
-    summary: "which files haven't migrated to a declared convention",
-  },
-  {
     name: "lint-baseline",
     group: "core",
     summary: 'separate "already red" from "I made it red"',
@@ -102,6 +97,12 @@ export const COMMANDS: CommandInfo[] = [
     name: "stats",
     group: "frozen",
     summary: "frozen-ledger KPIs (reads history only)",
+  },
+  {
+    name: "debt",
+    group: "frozen",
+    summary:
+      "files not yet migrated to a declared convention (no repo declares one — delete 2026-10-31)",
   },
   { name: "report", group: "frozen", summary: "verification report for a run" },
   { name: "report-web", group: "frozen", summary: "static HTML report page" },

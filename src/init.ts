@@ -14,7 +14,6 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { createInterface } from "node:readline";
-import { seedConventionsFile } from "./conventions-seed.js";
 import {
   type Config,
   doneDir,
@@ -25,7 +24,7 @@ import {
 } from "./core/config.js";
 import { isAffirmative } from "./util.js";
 
-const FAPONY_README = `# .fapony/ — fapony project dir (plans, specs, conventions)
+const FAPONY_README = `# .fapony/ — fapony project dir (plans, specs)
 # plan/ holds live plans, done/ the shipped ones, spec/ the specs live plans
 # cite (a spec moves to done/ with the last plan that cites it). done/ sits
 # beside plan/ rather than inside it so archiving never changes a file's depth,
@@ -209,24 +208,6 @@ export async function cmdInit(args: string[]): Promise<void> {
       console.error((e as Error).message);
       process.exit(1);
     }
-
-    // --- conventions.json fill-signal (PLAN-convention-debt chunk 2) ---
-    // eslint no-restricted-* rows carry their checker; the wrapper detector adds
-    // live-migration candidates. Nothing derivable = empty file, never an error.
-    const seed = await seedConventionsFile(targetPath);
-    if (seed.kept) {
-      console.log(
-        `  ${relative(targetPath, seed.file)} — already exists, left untouched`,
-      );
-    } else {
-      console.log(
-        `  ${relative(targetPath, seed.file)} — ${seed.eslintRows} from eslint, ${seed.wrapperRows} from wrappers`,
-      );
-      console.log(
-        `    'fapony debt' reads it; commit it (!**/.fapony/conventions.json in .gitignore)`,
-      );
-    }
-    for (const s of seed.skipped) console.log(`    ⚠ eslint config ${s}`);
   }
 
   const { create, append } = rulesTargets(targetPath);
