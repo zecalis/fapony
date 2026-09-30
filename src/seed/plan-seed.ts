@@ -242,7 +242,10 @@ function renderExistingInScope(
 
 function renderContextFapony(worktree: string): string {
   const lines: string[] = [];
-  const decisions = recentDecisions(readFaelLog(worktree).rows, 3);
+  const decisions = recentDecisions(
+    readFaelLog(worktree, undefined, true).rows,
+    3,
+  );
   lines.push(
     decisions.length > 0
       ? `- Decisions on record (mem): ${decisions
@@ -602,7 +605,7 @@ export function renderKnownTraps(
 ): { lines: string[]; matched: number; lacked: number } {
   const empty = { lines: [], matched: 0, lacked: 0 };
   try {
-    const { rows } = readFaelLog(worktree);
+    const { rows } = readFaelLog(worktree, undefined, true);
     if (rows.length === 0) return empty;
 
     const scopeFiles = new Set<string>();
