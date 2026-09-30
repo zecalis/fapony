@@ -29,7 +29,7 @@ the loop: fapony says *what's next*, fael says *what the last session learned*.
 | Writes | plan files, only when told (`plan sweep --apply`) | its log under `.fael/` in your repo |
 | Install | `npm i -g @zecalis/fapony && fapony install` | `npm i -g @zecalis/fael && fael install` |
 
-One session = one PR of up to 3 chunks (the exact rule is the §6 line `plan-seed` writes into every PLAN):
+One session = one PR of up to 3 chunks (`fapony plan PLAN-x.md` prints the exact rule):
 
 ```mermaid
 flowchart TD

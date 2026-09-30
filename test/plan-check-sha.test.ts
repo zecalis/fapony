@@ -9,7 +9,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { cmdPlanNext } from "../src/plan/next.js";
 import { initPlanStore } from "../src/plan/store.js";
-import { checkTickedLine, extractShas } from "../src/plan/sweep.js";
+import {
+  checkTickedLine,
+  extractShas,
+  isOnDefault,
+} from "../src/plan/sweep.js";
 import { captureLogs, withTempRepo } from "./helpers.js";
 
 const FAPONY = join(import.meta.dir, "..", "fapony.ts");
@@ -154,6 +158,103 @@ test("testCheckTickedLinePrNumber", () => {
   );
 });
 
+// A tick that survives a squash: the merge rewrites the cited sha but leaves
+// "subject (#N)" on the default branch, so a merged (#N) proves the closure.
+test("testCheckTickedLinePrNumberSurvivesSquash", () => {
+  withTempRepo((dir) => {
+    const { held, diverged } = repoWithShas(dir);
+    const squash = (subject: string) =>
+      execSync(`git commit --allow-empty -m "${subject}"`, {
+        cwd: dir,
+        stdio: "ignore",
+      });
+    squash("feat: one (#120)");
+    squash("feat: two (#121)");
+    squash("feat: three (#121)");
+    const tick = (...cites: string[]) =>
+      `- [x] chunk 1 — done (${cites.join(") (")})`;
+    // squashed sha + the merged PR number: verified, nothing diverged
+    assert.deepEqual(checkTickedLine(tick(diverged, "#120"), dir), {
+      missing: [],
+      diverged: [],
+      cited: 2,
+    });
+    // …also for the judge that asks "is it on the default branch"
+    assert.deepEqual(checkTickedLine(tick(held, "#120"), dir, isOnDefault), {
+      missing: [],
+      diverged: [],
+      cited: 2,
+    });
+    // PR still open: a branch holds the sha → work in flight, nothing reported
+    assert.deepEqual(checkTickedLine(tick(held, "#777"), dir), {
+      missing: [],
+      diverged: [],
+      cited: 2,
+    });
+    // …but the readiness judge (default branch only) is not satisfied
+    assert.deepEqual(checkTickedLine(tick(held, "#777"), dir, isOnDefault), {
+      missing: ["#777"],
+      diverged: [held],
+      cited: 2,
+    });
+    // sha lost AND the number names nothing → both reported
+    assert.deepEqual(checkTickedLine(tick(diverged, "#777"), dir), {
+      missing: ["#777"],
+      diverged: [diverged],
+      cited: 2,
+    });
+    // ambiguous number is reported even when a branch holds the sha
+    assert.deepEqual(checkTickedLine(tick(held, "#121"), dir), {
+      missing: ["#121"],
+      diverged: [],
+      cited: 2,
+    });
+  });
+  console.log("  ✓ checkTickedLine: a merged (#N) clears the squashed sha");
+});
+
+// The whole loop through the real CLI: tick with sha + (#N), squash away the
+// branch, merge more PRs — plan check stays green and --fix has nothing to do.
+test("testPlanCheckStaysCleanAfterSquashWhenTickCitesPr", () => {
+  withTempRepo((dir) => {
+    const { diverged } = repoWithShas(dir);
+    execSync('git commit --allow-empty -m "feat: chunk (#120)"', {
+      cwd: dir,
+      stdio: "ignore",
+    });
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    const planFile = join(dir, ".fapony/plan/PLAN-t.md");
+    writeFileSync(
+      planFile,
+      `# T\n\n## TL;DR\n- [x] chunk 1 — done (${diverged}) (#120)\n- [ ] chunk 2 — next\n`,
+    );
+    const run = (...args: string[]) =>
+      Bun.spawnSync(["bun", FAPONY, "plan", ...args], {
+        cwd: dir,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+    const out = (p: ReturnType<typeof run>) =>
+      p.stdout.toString() + p.stderr.toString();
+    for (const later of [0, 1, 3]) {
+      for (let i = 0; i < later; i++)
+        execSync(`git commit --allow-empty -m "feat: later ${i} (#13${i})"`, {
+          cwd: dir,
+          stdio: "ignore",
+        });
+      const check = run("check");
+      assert.equal(
+        check.exitCode,
+        0,
+        `clean after ${later} more:\n${out(check)}`,
+      );
+      assert.doesNotMatch(out(check), /no branch holds/);
+    }
+    assert.match(out(run("check", "--fix")), /--fix: nothing to repair/);
+  });
+  console.log("  ✓ plan-check e2e: sha + (#N) tick stays clean after squash");
+});
+
 // End to end through the real CLI: plan/ + done/ are both scanned, bad shas
 // are named, hex words are not, and the summary counts the ratio.
 test("testPlanCheckShaEndToEnd", () => {
@@ -265,6 +366,22 @@ test("testKickoffClosureHint", () => {
       new RegExp(`⚠ chunk 8 is ticked but ${diverged} is held by no branch`),
       `diverged sha warns:\n${out}`,
     );
+    // The squash commit exists, only the tick is stale → the brief names the fix.
+    assert.match(
+      out,
+      /held by no branch \(squashed, branch deleted\?\) — fix: fapony plan check --fix/,
+      `diverged warning ends with the command:\n${out}`,
+    );
+    // A PR number naming no default-branch commit reads as a PR number.
+    out = kickoffOutput(dir, planWith("- [x] chunk 8 — done (#999)"));
+    assert.match(
+      out,
+      /⚠ chunk 8 is ticked but \(#999\) names no single default-branch commit/,
+      `unmerged PR number warns as a PR number:\n${out}`,
+    );
+    // …but not while a branch still holds the sha: the PR is just open.
+    out = kickoffOutput(dir, planWith(`- [x] chunk 8 — done (${held}) (#999)`));
+    assert.doesNotMatch(out, /⚠ chunk/, `open PR stays silent:\n${out}`);
   });
   console.log("  ✓ kickoff: closure hint warns once, silent when verified");
 });

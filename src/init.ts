@@ -69,12 +69,12 @@ const RULES_SNIPPET = () => `${RULES_MARKER}
 Plans live in .fapony/plan/ (shipped ones in .fapony/done/). Memory — decisions,
 bugs, notes — lives in fael (\`fael add\` / \`fael find\`), not in .fapony/.
 
-How many chunks go in one session/PR, which chunk needs its own PR, and when to
-stop: the §6 line every seeded PLAN carries — the single source, don't restate it
-here. Close each chunk with that PLAN's "Closing a step" line — its handoff is a
-\`fael add note\` on the plan anchor (\`plan:x\`), not the plan path. The next session
-opens with \`fapony plan PLAN-x.md\` (unchecked chunks + the notes left for it)
-instead of carrying the old transcript forward.
+How many chunks go in one session/PR, which chunk needs its own PR, when to stop
+and how to close a chunk: \`fapony plan PLAN-x.md\` prints it — the single source,
+don't restate it here. A chunk's handoff is a \`fael add note\` on the plan anchor
+(\`plan:x\`), not the plan path. The next session opens with \`fapony plan PLAN-x.md\`
+(the next chunk + the notes left for it) instead of carrying the old transcript
+forward.
 \`fapony plan\` alone lists every active plan; ship one with
 \`fapony plan sweep PLAN-x.md --apply\` (moves it to done/, fixes the links).`;
 

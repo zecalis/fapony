@@ -3,11 +3,13 @@
 // Replaces the plan half of `fapony mem kickoff` (memory moved to fael):
 //   no arg    → every active plan: progress, first unchecked chunk, priority
 //               high first, blocked marked; plus shipped-but-not-archived
-//   <PLAN.md> → its unchecked chunks, whether the last ticked chunk's sha
-//               verifies, and the open fael rows about it (the chunk handoff
-//               notes — `fael add note … --files <f>,plan:<name>
-//               --key plan:<name>:handoff`), the open handoff first
-//               (legacy `plan:<name>:chunk-<n>` rows for the next chunk too)
+//   <PLAN.md> → a brief sized for one chunk: the next unchecked chunk in full,
+//               the rest one clipped line each, whether the last ticked
+//               chunk's sha verifies, the handoff note (`fael add note …
+//               --files <f>,plan:<name> --key plan:<name>:handoff`, legacy
+//               `plan:<name>:chunk-<label>` too) and the batching + closing
+//               rules. Other open fael rows are only counted — `fael kickoff`
+//               owns that list.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -26,6 +28,16 @@ import {
 
 const HANDOFF_LIMIT = 5;
 const TEXT_MAX = 200;
+const LATER_MAX = 120;
+
+/** The one copy of the batching + closing rules, printed by `fapony plan
+ *  <PLAN>`. A copy baked into each PLAN at seed time drifted (4 variants of the
+ *  closing line across 21 active plans), so plan-seed, plan adopt and init only
+ *  point here. */
+export const chunkRules = (anchor: string): string[] => [
+  "batching: one session = one branch = one squash-merged PR, up to 3 chunks of this plan, one commit per chunk · a chunk gets its own PR when it changes a DB schema/migration or persisted format, touches auth/permissions/security or money logic, changes a public API/CLI contract, or needs a design review · close each chunk fully (tick + handoff note + commit) before the next; stop at anything that needs a human decision · a chunk that must build on an unmerged branch is stacked (PR base = that branch; once it merges: `git rebase --onto origin/main <lower> <upper>`)",
+  `closing a step: tick TL;DR with sha · \`git commit\` files only · \`fael add note "<what the next chunk must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note) · after \`gh pr create\`, append \`(#N)\` to that tick (a squash rewrites the sha, \`(#N)\` survives it)`,
+];
 
 /** First-section items with the `- [ ] ` / `- [x] ` marker cut off. */
 const readPlanSectionItems = (
@@ -37,19 +49,35 @@ const readPlanSectionItems = (
 };
 
 // One line saying whether the last ticked chunk actually closed. Verified
-// shas stay silent; only the newest ticked chunk is ever mentioned.
+// shas stay silent; only the newest ticked chunk is ever mentioned. A tick
+// with no label the parser can read is "the last tick", never a made-up one.
 const closureHint = (checked: string[]): string | null => {
   const last = checked[checked.length - 1];
   if (!last) return null;
   const { missing, diverged, cited } = checkTickedLine(last, root);
-  const label = chunkLabel(last) ?? "latest";
+  const label = chunkLabel(last);
+  const who = label ? `chunk ${label} is ticked but ` : "last tick: ";
   if (missing.length)
-    return `⚠ chunk ${label} is ticked but ${missing[0]} is not in git — nothing proves it closed`;
+    return `⚠ ${who}${
+      missing[0].startsWith("#")
+        ? `(${missing[0]}) names no single default-branch commit`
+        : `${missing[0]} is not in git`
+    } — nothing proves it closed`;
+  // the squash commit exists, only the tick is stale: `--fix` repoints it
   if (diverged.length)
-    return `⚠ chunk ${label} is ticked but ${diverged[0]} is held by no branch (squashed, branch deleted?)`;
-  if (!cited)
-    return `⚠ chunk ${label} is ticked but cites no commit — nothing to verify it closed`;
+    return `⚠ ${who}${diverged[0]} is held by no branch (squashed, branch deleted?) — fix: fapony plan check --fix`;
+  if (!cited) return `⚠ ${who}cites no commit — nothing to verify it closed`;
   return null;
+};
+
+// A "later" chunk is listed by what it is called, not what it does: bold off,
+// cut at the first ": " / " (" / " · ", then at LATER_MAX. The full text stays
+// in the PLAN, and it becomes "next" when its turn comes.
+const headline = (s: string): string => {
+  const flat = s.replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+  const cut = flat.split(/:\s|\s\(|\s·\s/)[0];
+  const h = clip(cut, LATER_MAX);
+  return cut.length < flat.length && !h.endsWith("…") ? `${h} …` : h;
 };
 
 const readPlanTitle = (planPath: string): string => {
@@ -71,9 +99,9 @@ const isHighPriority = (planPath: string): boolean => {
   }
 };
 
-const clip = (s: string): string => {
+const clip = (s: string, max = TEXT_MAX): string => {
   const flat = s.replace(/\s+/g, " ").trim();
-  return flat.length > TEXT_MAX ? `${flat.slice(0, TEXT_MAX - 1)}…` : flat;
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 };
 
 // The plan's `spec:` frontmatter → where it lives, or that it is gone. No
@@ -109,47 +137,65 @@ function showPlan(file: string, chunk: string | null): void {
   console.log(`# ${readPlanTitle(file) || basename(file)} — ${rel(file)}`);
   const spec = specLine(file);
   if (spec) console.log(spec);
+  // `plan:x:chunk-<label>` picks another chunk as "next"; else the first unchecked
+  const picked = chunk
+    ? unchecked.findIndex(
+        (c) => chunkLabel(c)?.toLowerCase() === chunk.toLowerCase(),
+      )
+    : -1;
+  const at = Math.max(picked, 0);
   if (unchecked.length) {
-    console.log(`\n## unchecked`);
-    for (const c of unchecked) console.log(`- [ ] ${c}`);
+    console.log(`\n## next\n- [ ] ${unchecked[at]}`);
+    const later = unchecked.filter((_, i) => i !== at);
+    if (later.length) {
+      console.log(`\n## later (${later.length})`);
+      for (const c of later) console.log(`- ${headline(c)}`);
+    }
   } else {
     console.log(`\n(all chunks checked — ready to ship or archive)`);
   }
   const hint = closureHint(checked);
   if (hint) console.log(hint);
 
-  // The handoff leads — it is what the session opening the next chunk came
-  // for: `plan:<name>:handoff` (one key per plan, fael keeps only the newest
-  // open), or a legacy `plan:<name>:chunk-<next>` row. Stable sort keeps
-  // newest-first.
+  // Handoff = the rows the session opening the next chunk came for:
+  // `plan:<name>:handoff` (one key per plan, fael keeps only the newest open)
+  // or a legacy `plan:<name>:chunk-<label>`. The next chunk's legacy row leads;
+  // stable sort keeps newest-first. Every other open row about the plan is only
+  // counted — `fael kickoff` owns that list.
   const name = planKeyName(file);
-  const next = chunk ?? (unchecked[0] ? chunkLabel(unchecked[0]) : null);
-  const nextKey = name && next ? `plan:${name}:chunk-${next}` : null;
+  const nextLabel = unchecked[at] ? chunkLabel(unchecked[at]) : null;
   const handoffKey = name ? `plan:${name}:handoff` : null;
-  const rows = openRowsFor(file)
-    .map((r, i) => ({
-      r,
-      i,
-      lead: !!r.key && (r.key === handoffKey || r.key === nextKey),
-    }))
-    .sort((a, b) => Number(b.lead) - Number(a.lead) || a.i - b.i)
-    .map(({ r }) => r);
-  if (rows.length) {
-    console.log(`\n## open in fael (${rows.length})`);
-    for (const r of rows.slice(0, HANDOFF_LIMIT))
+  const nextKey =
+    name && nextLabel ? `plan:${name}:chunk-${nextLabel.toLowerCase()}` : null;
+  const isLead = (key?: string) =>
+    !!key && (key === handoffKey || key === nextKey);
+  const all = openRowsFor(file);
+  const handoffs = all
+    .filter(
+      (r) =>
+        !!name &&
+        !!r.key &&
+        (r.key === handoffKey || r.key.startsWith(`plan:${name}:chunk-`)),
+    )
+    .sort((a, b) => Number(isLead(b.key)) - Number(isLead(a.key)))
+    .slice(0, HANDOFF_LIMIT);
+  if (all.length) {
+    console.log(`\n## handoff`);
+    if (!handoffs.length) console.log("(none)");
+    for (const r of handoffs)
       console.log(
-        `- ${r.ts.slice(0, 10)} ${r.kind} [${r.id}]${r.key ? ` ${r.key}` : ""} ${clip(r.text)}`,
+        `- ${r.ts.slice(0, 10)} ${r.kind} [${r.id}] ${r.key} ${clip(r.text)}`,
       );
-    if (rows.length > HANDOFF_LIMIT)
+    const rest = all.length - handoffs.length;
+    if (rest)
       console.log(
-        // --files plan:<name> misses rows carrying only the chunk key on a
-        // code file, so an anchored plan names both calls
-        `… +${rows.length - HANDOFF_LIMIT} more — ${
-          name
-            ? `fael find --files plan:${name} · fael find --key 'plan:${name}:*'`
-            : `fael find --files ${rel(file)}`
-        }`,
+        `(+${rest} open rows about this plan — fael kickoff ${name ? `plan:${name}` : rel(file)})`,
       );
+  }
+  if (unchecked.length) {
+    console.log(`\n## closing`);
+    for (const rule of chunkRules(`plan:${name ?? "<name>"}`))
+      console.log(`- ${rule}`);
   }
 }
 
