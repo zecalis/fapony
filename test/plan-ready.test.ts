@@ -240,6 +240,42 @@ test("testHandoffKeyIsStaleOnceAllTicked", () => {
   console.log("  ✓ plan:<name>:handoff is live until every chunk ships");
 });
 
+test("testHandoffKeyIsStaleWithNonNumericLabels", () => {
+  // F1 / u0 / m1 carry no number: "last" is the last chunk in file order
+  withTempRepo((dir) => {
+    const { onMain } = repo(dir);
+    const hdr = "> ✅ **shipped 2026-09-30** (abc1234)";
+    const row = (id: string, key: string) => ({
+      id,
+      ts: "2026-09-30T00:00:00Z",
+      kind: "note",
+      text: "handoff",
+      key,
+    });
+    withFakeFael((setRows) => {
+      setRows([row("hk", "plan:a:handoff"), row("hc", "plan:a:chunk-m2")]);
+      plan(dir, [`- [x] chunk F1 — a (${onMain})`, "- [ ] chunk u0 — b"], hdr);
+      assert.notEqual(sweep(dir, "--apply").code, 0, "chunk u0 still open");
+      plan(
+        dir,
+        [`- [x] chunk F1 — a (${onMain})`, `- [x] chunk m1 — b (${onMain})`],
+        hdr,
+      );
+      const r = sweep(dir, "--apply");
+      assert.equal(r.code, 0, r.err);
+      assert.match(
+        r.out,
+        new RegExp(`fael close hk "chunk m1 shipped ${onMain}"`),
+      );
+      assert.match(
+        r.out,
+        new RegExp(`fael close hc "chunk m1 shipped ${onMain}"`),
+      );
+    });
+  });
+  console.log("  ✓ handoff of a plan labelled F1/u0/m1 is stale once all ship");
+});
+
 const run = (cwd: string, ...args: string[]) => {
   const p = Bun.spawnSync(["bun", FAPONY, "plan", ...args], {
     cwd,

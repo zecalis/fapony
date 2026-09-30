@@ -523,40 +523,28 @@ export const shippedNotMoved = (): string[] => {
 // last one proves it (n = that last chunk). `plan:<name>:handoff` names no
 // chunk either (one key per plan), so it takes the same path: live while any
 // chunk is unchecked, stale once all are ticked and the last one proves it.
+// "Last" is file order, not the label: F1 / u0 / m1 carry no number to rank.
 export const splitHandoffs = (
   planPath: string,
 ): { live: MemRow[]; stale: { row: MemRow; ref: string; n: string }[] } => {
   const { checked, unchecked } = firstSectionItems(planPath);
-  // F3 / 3b labels: only the leading number orders chunks, else 0
-  const last = Math.max(
-    0,
-    ...[...checked, ...unchecked].map(
-      (l) => Number.parseInt(chunkLabel(l) ?? "", 10) || 0,
-    ),
-  );
+  const labelled = (key: string) => (l: string) =>
+    chunkLabel(l)?.toLowerCase() === key.toLowerCase();
   const live: MemRow[] = [];
   const stale: { row: MemRow; ref: string; n: string }[] = [];
   for (const row of openHandoffRowsFor(planPath)) {
-    const key =
-      /:chunk-([a-z0-9]+)$/i.exec(row.key ?? "")?.[1] ??
-      (row.key?.endsWith(":handoff") ? String(last + 1) : undefined);
-    const n =
-      key && Number(key) > last && !unchecked.length ? String(last) : key;
+    const key = /:chunk-([a-z0-9]+)$/i.exec(row.key ?? "")?.[1];
+    const pastEnd = key
+      ? ![...checked, ...unchecked].some(labelled(key))
+      : row.key?.endsWith(":handoff");
     const line =
-      n &&
-      checked.find((l) => chunkLabel(l)?.toLowerCase() === n.toLowerCase());
+      (key && checked.find(labelled(key))) ||
+      (pastEnd && !unchecked.length ? checked.at(-1) : undefined);
     const r = line && checkTickedLine(line, root);
-    if (
-      n &&
-      line &&
-      r &&
-      r.cited > 0 &&
-      !r.missing.length &&
-      !r.diverged.length
-    )
+    if (line && r && r.cited > 0 && !r.missing.length && !r.diverged.length)
       stale.push({
         row,
-        n,
+        n: chunkLabel(line) ?? key ?? "latest",
         ref: extractShas(line)[0] ?? /\(#\d+\)/.exec(line)?.[0] ?? "",
       });
     else live.push(row);
