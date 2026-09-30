@@ -355,7 +355,7 @@ export const collectUnadoptedDocWarns = (active: string[]): string[] => {
 
 export const planSweepCmd = "fapony plan sweep";
 
-const mdFiles = (dir: string): string[] =>
+export const mdFiles = (dir: string): string[] =>
   existsSync(dir)
     ? readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
         e.isDirectory()
@@ -734,7 +734,7 @@ const isAnyObject = (sha: string, cwd: string): boolean =>
 export const isAncestorOfHead = (sha: string, cwd: string): boolean =>
   gitOk(["merge-base", "--is-ancestor", sha, "HEAD"], cwd);
 
-const gitOut = (args: string[], cwd: string): string => {
+export const gitOut = (args: string[], cwd: string): string => {
   try {
     const p = Bun.spawnSync(["git", ...args], {
       cwd,
@@ -940,7 +940,7 @@ export const cmdPlanCheck = (a: string[]) => {
       }
       for (const sha of diverged) {
         issues.push(
-          `${relPath}:${i + 1} — ticked chunk cites ${sha} which no branch holds (squashed, branch deleted?)\n   fix: point at the surviving commit or leave the chunk unticked`,
+          `${relPath}:${i + 1} — ticked chunk cites ${sha} which no branch holds (squashed, branch deleted?)\n   fix: fapony plan check --fix repoints it to the squash commit when exactly one matches, else point at the surviving commit by hand`,
         );
       }
     });
