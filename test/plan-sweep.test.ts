@@ -11,6 +11,7 @@ import { test } from "bun:test";
 import assert from "node:assert";
 import { execSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -184,6 +185,72 @@ test("testPlanSweepApplyEndToEnd", () => {
   });
   console.log(
     "  ✓ plan-sweep --apply fixes own + plan/done/spec inbound, reports the rest",
+  );
+});
+
+// A SPEC lives and dies with the plans that cite it: sweeping the first of two
+// plans leaves it in spec/, sweeping the last takes it to done/ with every link
+// (plans, the spec's own) repointed.
+test("testPlanSweepMovesSpecWithTheLastPlanCitingIt", () => {
+  withTempRepo((dir) => {
+    for (const d of ["plan", "done", "spec"])
+      mkdirSync(join(dir, ".fapony", d), { recursive: true });
+    const w = (p: string, s: string) => writeFileSync(join(dir, p), s);
+    const shipped = "> ✅ **shipped 2026-09-22** (abc1234)\n";
+    const plan = (n: string, head: string) =>
+      `---\nspec: SPEC-x.md\n---\n# ${n}\n${head}\n[spec](../spec/SPEC-x.md)\n`;
+    w(".fapony/plan/PLAN-a.md", plan("A", shipped));
+    w(".fapony/plan/PLAN-b.md", plan("B", ""));
+    w(
+      ".fapony/spec/SPEC-x.md",
+      "# X\n\n[a](../plan/PLAN-a.md)\n[b](../plan/PLAN-b.md)\n",
+    );
+    execSync("git add .", { cwd: dir, stdio: "ignore" });
+    execSync('git commit -m "plans"', { cwd: dir, stdio: "ignore" });
+    const sweep = (name: string) => {
+      const proc = Bun.spawnSync(
+        ["bun", FAPONY, "plan", "sweep", name, "--apply"],
+        {
+          cwd: dir,
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      const out = proc.stdout.toString() + proc.stderr.toString();
+      assert.equal(proc.exitCode, 0, out);
+      return out;
+    };
+    const read = (p: string) => readFileSync(join(dir, p), "utf8");
+    const there = (p: string) => existsSync(join(dir, p));
+
+    const first = sweep("PLAN-a.md");
+    assert.match(
+      first,
+      /spec SPEC-x\.md stays in .*spec\/ — PLAN-b\.md still names it/,
+    );
+    assert.ok(
+      there(".fapony/spec/SPEC-x.md") && !there(".fapony/done/SPEC-x.md"),
+    );
+
+    w(".fapony/plan/PLAN-b.md", plan("B", shipped));
+    const last = sweep("PLAN-b.md");
+    assert.match(last, /moved spec .*spec\/SPEC-x\.md → .*done\/SPEC-x\.md/);
+    assert.ok(
+      !there(".fapony/spec/SPEC-x.md") && there(".fapony/done/SPEC-x.md"),
+    );
+    for (const n of ["a", "b"])
+      assert.ok(
+        read(`.fapony/done/PLAN-${n}.md`).includes("[spec](SPEC-x.md)"),
+        `plan ${n} link`,
+      );
+    const spec = read(".fapony/done/SPEC-x.md");
+    assert.ok(
+      spec.includes("[a](PLAN-a.md)") && spec.includes("[b](PLAN-b.md)"),
+      spec,
+    );
+  });
+  console.log(
+    "  ✓ plan-sweep --apply moves a spec with the last plan that cites it",
   );
 });
 

@@ -82,6 +82,8 @@ export type PlanFrontmatter = {
   blockedByRaw: string | null;
   blocksRaw: string | null;
   supersededBy: string | null;
+  /** `spec: SPEC-x.md` — basename of the first token, a path is cut to its name. */
+  spec: string | null;
 };
 
 // frontmatter is the only dep-graph source — no new schema, parse what agents
@@ -95,6 +97,7 @@ export const parsePlanFrontmatter = (file: string): PlanFrontmatter => {
     blockedByRaw: null,
     blocksRaw: null,
     supersededBy: null,
+    spec: null,
   };
   try {
     const head = readFileSync(file, "utf8").slice(0, 4096);
@@ -102,7 +105,7 @@ export const parsePlanFrontmatter = (file: string): PlanFrontmatter => {
     if (!m) return out;
     for (const line of m[1].split("\n")) {
       const kv =
-        /^\s*(status|kind|blocked_by|blocks|superseded_by)\s*:\s*(.+?)\s*$/.exec(
+        /^\s*(status|kind|blocked_by|blocks|superseded_by|spec)\s*:\s*(.+?)\s*$/.exec(
           line,
         );
       if (!kv) continue;
@@ -112,6 +115,7 @@ export const parsePlanFrontmatter = (file: string): PlanFrontmatter => {
       else if (kv[1] === "kind") out.kind = v;
       else if (kv[1] === "blocked_by") out.blockedByRaw = v;
       else if (kv[1] === "blocks") out.blocksRaw = v;
+      else if (kv[1] === "spec") out.spec = v && basename(v.split(/\s/)[0]);
       else out.supersededBy = v;
     }
   } catch {
@@ -574,6 +578,70 @@ const stampShipped = (file: string, sha: string): void => {
   );
 };
 
+// ponytail: a file just written this round may not be git add'ed yet — `git mv` fails silently (exit 128, no throw)
+// then the next code hits ENOENT reading a dst that does not exist — always stage first (no-op if already tracked)
+const moveFile = (src: string, dst: string): void => {
+  // a repo that gitignores .fapony/ (public repo, private plans) has nothing
+  // for git to move — `git add` refuses an ignored path, and a symlinked
+  // .fapony/ is "beyond a symbolic link" (check-ignore exits 128, not 0) —
+  // so ask the index whether git holds the file after staging, else rename
+  Bun.spawnSync(["git", "add", src], { cwd: root, stderr: "ignore" });
+  if (!gitOk(["ls-files", "--error-unmatch", src], root)) {
+    renameSync(src, dst);
+    console.log(
+      `${rel(src)} is not tracked by git — moved with a plain rename`,
+    );
+    return;
+  }
+  const mv = Bun.spawnSync(["git", "mv", src, dst], { cwd: root });
+  if (mv.exitCode !== 0) {
+    console.error(`git mv failed (${mv.stderr.toString().trim()}) — not moved`);
+    process.exit(1);
+  }
+};
+
+// files outside .fapony/ that mention the filename — detect-only.
+// Everything under planBase/ is auto-fixed, so what remains is repo docs and
+// prose (README, docs/, CLAUDE.md) with hand-written paths.
+// cwd: root — the pathspecs are root-relative no matter where fapony runs from.
+const warnOutside = (name: string): void => {
+  const grep = Bun.spawnSync(
+    ["git", "grep", "-l", name, "--", ".", `:!${rel(planBase)}`],
+    { cwd: root },
+  )
+    .stdout.toString()
+    .trim();
+  if (grep)
+    console.log(
+      `⚠ files outside ${rel(planBase)}/ still mention "${name}" — check them yourself (not auto-fixed):\n${grep}`,
+    );
+};
+
+// A SPEC lives and dies with the plans that cite it: the plan just moved to
+// done/ takes its `spec:` along unless another active plan still names the file
+// (link, frontmatter or prose — any mention keeps it where it is). One report
+// line, null when the plan has no spec or it is not in spec/.
+const archiveSpec = (plan: string): string | null => {
+  const name = parsePlanFrontmatter(plan).spec;
+  const src = name ? join(planBase, "spec", name) : "";
+  if (!name || !existsSync(src)) return null;
+  const keeper = mdFiles(planDir).find((f) =>
+    readFileSync(f, "utf8").includes(name),
+  );
+  if (keeper)
+    return `spec ${name} stays in ${rel(dirname(src))}/ — ${basename(keeper)} still names it`;
+  const dst = join(doneDir, name);
+  if (existsSync(dst))
+    return `⚠ spec ${name} not moved — ${rel(dst)} already exists`;
+  moveFile(src, dst);
+  rewriteMovedFileLinks(dst, dirname(src), doneDir);
+  let inbound = 0;
+  for (const f of mdFiles(planBase))
+    if (f !== dst) inbound += rewriteMarkdownLinks(f, src, dst);
+  warnOutside(name);
+  return `moved spec ${rel(src)} → ${rel(dst)} — no active plan names it any more (inbound links rewritten: ${inbound})`;
+};
+
 export const cmdPlanSweep = (a: string[]) => {
   const dir = planDir;
   if (!existsSync(dir)) {
@@ -704,28 +772,8 @@ export const cmdPlanSweep = (a: string[]) => {
     process.exit(1);
   }
 
-  // ponytail: a file just written this round may not be git add'ed yet — `git mv` fails silently (exit 128, no throw)
-  // then the next code hits ENOENT reading a dst that does not exist — always stage first (no-op if already tracked)
   mkdirSync(doneDir, { recursive: true });
-  // a repo that gitignores .fapony/ (public repo, private plans) has nothing
-  // for git to move — `git add` refuses an ignored path, and a symlinked
-  // .fapony/ is "beyond a symbolic link" (check-ignore exits 128, not 0) —
-  // so ask the index whether git holds the file after staging, else rename
-  Bun.spawnSync(["git", "add", src], { cwd: root, stderr: "ignore" });
-  if (!gitOk(["ls-files", "--error-unmatch", src], root)) {
-    renameSync(src, dst);
-    console.log(
-      `${rel(src)} is not tracked by git — moved with a plain rename`,
-    );
-  } else {
-    const mv = Bun.spawnSync(["git", "mv", src, dst], { cwd: root });
-    if (mv.exitCode !== 0) {
-      console.error(
-        `git mv failed (${mv.stderr.toString().trim()}) — not moved`,
-      );
-      process.exit(1);
-    }
-  }
+  moveFile(src, dst);
 
   // own links always need re-relativizing — the file changed directory even in
   // the sibling layout (plan/ → done/ beside it), so sibling links dangle
@@ -803,20 +851,10 @@ export const cmdPlanSweep = (a: string[]) => {
     );
   }
 
-  // files outside .fapony/ that mention the filename — detect-only.
-  // Everything under planBase/ was auto-fixed above, so what remains is repo
-  // docs and prose (README, docs/, CLAUDE.md) with hand-written paths.
-  // cwd: root — the pathspecs are root-relative no matter where fapony runs from.
-  const grep = Bun.spawnSync(
-    ["git", "grep", "-l", name, "--", ".", `:!${rel(planBase)}`],
-    { cwd: root },
-  )
-    .stdout.toString()
-    .trim();
-  if (grep)
-    console.log(
-      `⚠ files outside ${rel(planBase)}/ still mention "${name}" — check them yourself (not auto-fixed):\n${grep}`,
-    );
+  warnOutside(name);
+
+  const specReport = archiveSpec(dst);
+  if (specReport) console.log(specReport);
 };
 
 // plan-check — list active PLANs + detect shipped-not-moved + broken links

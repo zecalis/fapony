@@ -58,10 +58,11 @@ You are about to move a PLAN that has been shipped to the archive.
    `mv` instead; there's nothing to commit for an untracked path, so skip step 4 in that case.
    The filename gets no date prefix — the ship date is already in the header (step 1).
 
-3. **Leave the spec where it is** — `.fapony/spec/` is a reference library, not a queue. A spec
-   answers "how does this work", which is asked long after the plan that ordered it shipped, and
-   a spec that never moves is a link that never breaks. Nothing to do here; there is no
-   `spec/done/`.
+3. **The spec moves itself** — when the plan's `spec:` file sits in `.fapony/spec/` and no other
+   active plan names it, `--apply` moves it to `done/` beside the plan and repoints the links. If
+   another active plan still names it the report says `stays in spec/ — <plan> still names it`:
+   nothing to do, the last of those plans takes it. Read the `⚠ files outside .fapony/` lines
+   for hand-written paths to it.
 
 4. **Commit** (only when the moved files are actually tracked by git):
    ```
@@ -87,7 +88,7 @@ Input: .fapony/plan/PLAN-kickoff.md, all chunks ticked + merged, no shipped head
 Steps:
 1. fapony plan sweep .fapony/plan/PLAN-kickoff.md --apply
    → stamped ✅ shipped 2026-09-13 (a1b2c3), moved, links rewritten, `fael close …` lines for stale handoffs
-3. spec: untouched, stays in .fapony/spec/
+3. spec: moved to .fapony/done/ with the last plan that cited it (or `stays in spec/ — PLAN-y still names it`)
 4. commit
 5. (clean ship — the move is in git, nothing more to file)
 ```

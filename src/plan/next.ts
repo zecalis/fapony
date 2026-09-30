@@ -29,6 +29,8 @@ import {
 const HANDOFF_LIMIT = 5;
 const TEXT_MAX = 200;
 const LATER_MAX = 120;
+const SPEC_REFS_MAX = 3;
+const SPEC_TITLE_MAX = 50;
 
 /** The one copy of the batching + closing rules, printed by `fapony plan
  *  <PLAN>`. A copy baked into each PLAN at seed time drifted (4 variants of the
@@ -105,22 +107,70 @@ const clip = (s: string, max = TEXT_MAX): string => {
 };
 
 // The plan's `spec:` frontmatter → where it lives, or that it is gone. No
-// `spec:` key = a plan without a spec, nothing to say.
-const specLine = (planPath: string): string | null => {
-  try {
-    const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(
-      readFileSync(planPath, "utf8"),
-    )?.[1];
-    const name = front && /^spec:\s*([^\s#]\S*)\s*(#.*)?$/m.exec(front)?.[1];
-    if (!name) return null;
-    const spec = join(planBase, "spec", basename(name));
-    return existsSync(spec)
-      ? `spec: ${rel(spec)}`
-      : `⚠ spec ${basename(name)} is named in the frontmatter but not in ${rel(join(planBase, "spec"))}/`;
-  } catch {
-    return null;
-  }
+// `spec:` key = a plan without a spec, nothing to say. A spec sits in spec/
+// while a plan cites it and moves to done/ with the last one (plan sweep).
+const specFile = (
+  planPath: string,
+): { name: string; file: string | null } | null => {
+  const name = parsePlanFrontmatter(planPath).spec;
+  if (!name) return null;
+  const file = [join(planBase, "spec"), doneDir]
+    .map((d) => join(d, name))
+    .find(existsSync);
+  return { name, file: file ?? null };
 };
+
+// `§16` / `§16.2` in the chunk text → where that section sits in the spec:
+// `§16 → SPEC-vela.md:339-414 <title>`, so the session reads 75 lines, not 671.
+// A section runs from its heading (`## §16 …` or `## 16. …`) to the next heading
+// of the same or a higher level; headings inside code fences are not headings.
+// A § the spec has no heading for is skipped — never guessed — and so is one
+// that another document owns: `ARCHITECTURE §5`, `SPEC-vela-ui §3`. Bare `§5`
+// and `SPEC §5` are this spec's.
+const specRefs = (file: string, chunk: string): string[] => {
+  const mine = [basename(file), basename(file, ".md"), "SPEC"];
+  const cited = [
+    ...new Set(
+      [
+        ...chunk.matchAll(
+          /(?:\b([A-Z][A-Z0-9]*(?:[-_.]\w+)*)\s*)?§(\d+(?:\.\d+)*)/g,
+        ),
+      ]
+        .filter((m) => !m[1] || mine.includes(m[1]))
+        .map((m) => m[2]),
+    ),
+  ];
+  if (!cited.length) return [];
+  const lines = readFileSync(file, "utf8").split("\n");
+  let fenced = false;
+  const heads: { at: number; level: number; text: string }[] = [];
+  lines.forEach((l, i) => {
+    if (/^\s*(```|~~~)/.test(l)) fenced = !fenced;
+    const m = !fenced && /^(#{1,6})\s+(.+?)\s*$/.exec(l);
+    if (m) heads.push({ at: i + 1, level: m[1].length, text: m[2] });
+  });
+  const refs = cited.flatMap((n) => {
+    const num = new RegExp(
+      `^§?${n.replace(/\./g, "\\.")}(?!\\d|\\.\\d)[.):]?(?:\\s+|$)`,
+    );
+    const i = heads.findIndex((h) => num.test(h.text));
+    if (i < 0) return [];
+    const { at, level, text } = heads[i];
+    const nextAt =
+      heads.slice(i + 1).find((h) => h.level <= level)?.at ?? lines.length + 1;
+    let to = nextAt - 1;
+    while (to > at && !lines[to - 1].trim()) to--;
+    return [
+      `§${n} → ${basename(file)}:${at}-${to} ${clip(text.replace(num, ""), SPEC_TITLE_MAX)}`,
+    ];
+  });
+  return refs.slice(0, SPEC_REFS_MAX);
+};
+
+const specLine = (spec: NonNullable<ReturnType<typeof specFile>>): string =>
+  spec.file
+    ? `spec: ${rel(spec.file)}`
+    : `⚠ spec ${spec.name} is named in the frontmatter but not in ${rel(join(planBase, "spec"))}/ or ${rel(doneDir)}/`;
 
 function showFiles(files: string[]): void {
   const hits = mentionsOfFiles(files);
@@ -135,8 +185,8 @@ function showFiles(files: string[]): void {
 function showPlan(file: string, chunk: string | null): void {
   const { checked, unchecked } = readPlanSectionItems(file);
   console.log(`# ${readPlanTitle(file) || basename(file)} — ${rel(file)}`);
-  const spec = specLine(file);
-  if (spec) console.log(spec);
+  const spec = specFile(file);
+  if (spec) console.log(specLine(spec));
   // `plan:x:chunk-<label>` picks another chunk as "next"; else the first unchecked
   const picked = chunk
     ? unchecked.findIndex(
@@ -144,6 +194,8 @@ function showPlan(file: string, chunk: string | null): void {
       )
     : -1;
   const at = Math.max(picked, 0);
+  if (spec?.file && unchecked[at])
+    for (const ref of specRefs(spec.file, unchecked[at])) console.log(ref);
   if (unchecked.length) {
     console.log(`\n## next\n- [ ] ${unchecked[at]}`);
     const later = unchecked.filter((_, i) => i !== at);

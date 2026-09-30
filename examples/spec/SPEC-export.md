@@ -3,10 +3,9 @@
 > **Used by:** [PLAN-feature-export.md](../plan/PLAN-feature-export.md) ·
 > [PLAN-webapp-notifications.md](../plan/PLAN-webapp-notifications.md) (digest attachment)
 >
-> **Specs are never archived.** When the plan above ships it moves to `done/`; this file stays
-> here, because "how does the export actually work" is asked long after the work that ordered it
-> finished. A spec that never moves is a link that never breaks — which is why `move-to-done`
-> has no step for specs at all.
+> **A spec moves with the last plan that cites it.** While either plan above is live this file
+> stays here; when the last of them ships, `fapony plan sweep --apply` moves it to `done/` beside
+> them and repoints every link to it.
 
 ## 1. Column mapping
 

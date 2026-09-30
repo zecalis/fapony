@@ -241,7 +241,10 @@ cannot drift; a hand-kept master file always does. `fapony plan check` verifies 
 shas against git history (a ticked box with no sha to check is a claim, not a close) and flags
 dangling `blocked_by` refs; `fapony plan sweep PLAN-x.md --apply` archives a shipped plan with `git mv`
 into `.fapony/done/` — same name, same depth, so every relative link inside the file survives the
-move. Specs live in `.fapony/spec/` and are never archived.
+move. A spec lives in `.fapony/spec/` while a plan cites it (`spec:` frontmatter) and moves to
+`done/` with the last plan that does — `plan sweep --apply` keeps it if another active plan still
+names the file, and repoints every link. `fapony plan PLAN-x.md` prints `§N → SPEC-x.md:from-to`
+for each section the next chunk cites, so a session reads those lines, not the whole spec.
 
 ## CLI
 

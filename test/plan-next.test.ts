@@ -498,3 +498,80 @@ test("testChunkRulesTextLivesInOneSourceFile", () => {
   );
   assert.deepStrictEqual(hits, ["plan/next.ts"]);
 });
+
+test("testPlanBriefPointsAtTheSpecSectionsTheChunkCites", () => {
+  withTempRepo((dir) => {
+    const p = join(dir, ".fapony", "plan");
+    mkdirSync(p, { recursive: true });
+    mkdirSync(join(dir, ".fapony", "spec"), { recursive: true });
+    const spec = [
+      "# SPEC-x",
+      "## §1 One",
+      "a",
+      "### §1.1 Sub",
+      "b",
+      "```",
+      "## §9 inside a fence",
+      "```",
+      "## 2. Two",
+      "c",
+      "d",
+      "",
+      "## 3.1 Three-one",
+      "e",
+      "## §12 Twelve",
+      "f",
+      "",
+    ];
+    writeFileSync(join(dir, ".fapony/spec/SPEC-x.md"), spec.join("\n"));
+    const at = (h: string) => spec.indexOf(h) + 1;
+    writeFileSync(
+      join(p, "PLAN-x.md"),
+      plan(
+        "X",
+        "spec: SPEC-x.md\n",
+        "- [ ] chunk 1 — do it (SPEC §2, §1.1, §3, §9; ARCHITECTURE §1; SPEC-other §12)",
+      ),
+    );
+    const out = run(dir, ["PLAN-x.md"]);
+    assert.ok(
+      out.includes(`§2 → SPEC-x.md:${at("## 2. Two")}-${at("d")} Two\n`),
+      out,
+    );
+    assert.ok(
+      out.includes(
+        `§1.1 → SPEC-x.md:${at("### §1.1 Sub")}-${at("## 2. Two") - 1} Sub\n`,
+      ),
+      out,
+    );
+    // `§3` has no heading (only 3.1), `§9` sits in a fence, the other two belong to other documents
+    assert.equal(out.match(/^§/gm)?.length, 2, out);
+    assert.ok(
+      out.indexOf("§2 →") < out.indexOf("## next"),
+      "refs sit under the spec line",
+    );
+
+    // no `spec:` → nothing to point at
+    writeFileSync(
+      join(p, "PLAN-y.md"),
+      plan("Y", "", "- [ ] chunk 1 — do it (§2)"),
+    );
+    assert.ok(!/^§/m.test(run(dir, ["PLAN-y.md"])));
+  });
+});
+
+test("testPlanBriefFindsASpecThatMovedToDone", () => {
+  withTempRepo((dir) => {
+    const p = join(dir, ".fapony", "plan");
+    mkdirSync(p, { recursive: true });
+    mkdirSync(join(dir, ".fapony", "done"), { recursive: true });
+    writeFileSync(join(dir, ".fapony/done/SPEC-x.md"), "## §1 One\nbody\n");
+    writeFileSync(
+      join(p, "PLAN-x.md"),
+      plan("X", "spec: SPEC-x.md\n", "- [ ] chunk 1 — go (§1)"),
+    );
+    const out = run(dir, ["PLAN-x.md"]);
+    assert.match(out, /^spec: \.fapony\/done\/SPEC-x\.md$/m);
+    assert.match(out, /^§1 → SPEC-x\.md:1-2 One$/m);
+  });
+});
