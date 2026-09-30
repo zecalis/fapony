@@ -35,19 +35,16 @@ export const planKeyName = (planPath: string): string | null =>
 // A files[] entry of plan:<name>:chunk-N names the plan just as a key of the
 // same shape does — exact-only on files[] slipped those rows out.
 let openCache: { root: string; rows: MemRow[] } | null = null;
-let allCache: { root: string; rows: MemRow[] } | null = null;
-const allRows = (): MemRow[] => {
-  if (allCache?.root !== root)
-    allCache = { root, rows: readFaelLog(root, undefined, false).rows };
-  return allCache.rows;
-};
-export const openRowsFor = (planPath: string): MemRow[] => {
+const openRows = (): MemRow[] => {
   if (openCache?.root !== root)
     openCache = { root, rows: readFaelLog(root, undefined, true).rows };
+  return openCache.rows;
+};
+export const openRowsFor = (planPath: string): MemRow[] => {
   const file = basename(planPath);
   const name = planKeyName(planPath);
   const anchor = name ? `plan:${name}` : null;
-  return openCache.rows.filter(
+  return openRows().filter(
     (r) =>
       [...(r.files ?? []), r.spec ?? ""].some((f) => {
         const fl = f.toLowerCase();
@@ -62,29 +59,14 @@ export const openRowsFor = (planPath: string): MemRow[] => {
   );
 };
 
-// Closing-ceremony handoffs — open `plan:<name>:*` rows by anchor key, any
-// kind. Handoff notes (`fael add note --key plan:<name>:chunk-N`) are the
-// plan's unfinished work, but the pre-move check used to filter kind:"bug"
-// only, so they never blocked. Consulted from the --all rows with closes
-// applied locally (newest per key wins, closed ids out) instead of fael's
-// open filter, which the anchor-only rows can slip out of.
+// Closing-ceremony handoffs — open `plan:<name>:*` rows by key, any kind.
+// Handoff notes (`fael add note --key plan:<name>:chunk-N`) are the plan's
+// unfinished work. Open/closed/superseded is fael's call, never re-derived here.
 export const openHandoffRowsFor = (planPath: string): MemRow[] => {
   const name = planKeyName(planPath);
   if (!name) return [];
   const prefix = `plan:${name}:`;
-  const rows = allRows();
-  const closed = new Set(
-    rows.filter((r) => r.kind === "close" && r.ref).map((r) => r.ref as string),
-  );
-  const byKey = new Map<string, MemRow>();
-  for (const r of rows) {
-    if (!r.key?.startsWith(prefix)) continue;
-    const cur = byKey.get(r.key);
-    if (!cur || (r.ts ?? "") >= (cur.ts ?? "")) byKey.set(r.key, r);
-  }
-  return [...byKey.values()].filter(
-    (r) => r.kind !== "close" && (r.id == null || !closed.has(r.id)),
-  );
+  return openRows().filter((r) => r.key?.startsWith(prefix));
 };
 
 const SHIPPED = /^>\s*✅/m;

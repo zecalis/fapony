@@ -170,7 +170,7 @@ export interface FaelFixtureRow {
 
 /**
  * Run fn with a fake `fael` first on PATH — it prints whatever `setRows` last
- * wrote, for any subcommand. Keeps tests off the real binary and the real
+ * wrote, for any subcommand (rows with `closed` only under --all). Keeps tests off the real binary and the real
  * .fael/ log. Handles async fn; PATH is restored when it settles.
  */
 export function withFakeFael<T>(
@@ -179,9 +179,12 @@ export function withFakeFael<T>(
   const bin = mkdtempSync(join(tmpdir(), "fapony-fake-fael-"));
   const rowsPath = join(bin, "rows.jsonl");
   writeFileSync(rowsPath, "");
-  writeFileSync(join(bin, "fael"), `#!/bin/sh\ncat "${rowsPath}"\n`, {
-    mode: 0o755,
-  });
+  // like the real binary: without --all, closed rows are hidden
+  writeFileSync(
+    join(bin, "fael"),
+    `#!/bin/sh\ncase " $* " in *" --all "*) cat "${rowsPath}";; *) grep -v '"closed":' "${rowsPath}";; esac\nexit 0\n`,
+    { mode: 0o755 },
+  );
   // A string row is written raw (malformed-line fixtures).
   const setRows = (rows: (FaelFixtureRow | string)[]): void =>
     writeFileSync(
