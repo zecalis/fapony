@@ -130,3 +130,72 @@ test("testStaleHandoffPrintsCloseLiveHandoffBlocks", () => {
   });
   console.log("  ✓ handoff of a ticked chunk → close line; unticked → blocks");
 });
+
+test("testStampCitesShippingCommitNotMainTip", () => {
+  withTempRepo((dir) => {
+    const base = git(dir, "branch --show-current");
+    const { onMain } = repo(dir);
+    git(dir, `switch ${base}`);
+    git(dir, 'commit --allow-empty -m "later, unrelated"');
+    const tip = git(dir, "rev-parse --short=7 HEAD");
+    git(dir, "switch side");
+    plan(dir, [`- [x] chunk 1 — a (${onMain})`]);
+    const dry = sweep(dir);
+    assert.match(dry.out, /verified on/);
+    assert.doesNotMatch(dry.out, /has a ✅ shipped header/);
+    const r = sweep(dir, "--apply");
+    assert.equal(r.code, 0, r.err);
+    assert.match(
+      r.out,
+      new RegExp(`stamped ✅ shipped header \\(${onMain}\\)`),
+    );
+    const moved = readFileSync(join(dir, ".fapony/done/PLAN-a.md"), "utf8");
+    assert.ok(
+      !moved.includes(tip),
+      "stamp is the shipping commit, not main's tip",
+    );
+  });
+  console.log(
+    "  ✓ stamp + log cite the newest ticked commit, dry run says why",
+  );
+});
+
+test("testFinalChunkHandoffIsStaleOnceAllTicked", () => {
+  withTempRepo((dir) => {
+    const { onMain } = repo(dir);
+    const hdr = "> ✅ **shipped 2026-09-30** (abc1234)";
+    const row = {
+      id: "h3",
+      ts: "2026-09-30T00:00:00Z",
+      kind: "note",
+      text: "handoff",
+      key: "plan:a:chunk-3",
+    };
+    withFakeFael((setRows) => {
+      setRows([row]);
+      plan(dir, [`- [x] chunk 1 — a (${onMain})`, "- [ ] chunk 2 — b"], hdr);
+      assert.notEqual(sweep(dir, "--apply").code, 0, "chunk 2 still open");
+      plan(
+        dir,
+        [`- [x] chunk 1 — a (${onMain})`, `- [x] chunk 2 — b (${onMain})`],
+        hdr,
+      );
+      // listing from a subdirectory reads the plan by absolute path
+      mkdirSync(join(dir, "sub"));
+      const list = Bun.spawnSync(["bun", FAPONY, "plan", "sweep"], {
+        cwd: join(dir, "sub"),
+        env: process.env,
+        stdout: "pipe",
+      }).stdout.toString();
+      assert.match(list, /PLAN-a\.md/);
+      assert.doesNotMatch(list, /open handoff/);
+      const r = sweep(dir, "--apply");
+      assert.equal(r.code, 0, r.err);
+      assert.match(
+        r.out,
+        new RegExp(`fael close h3 "chunk 2 shipped ${onMain}"`),
+      );
+    });
+  });
+  console.log("  ✓ chunk-<last+1> handoff is stale once every chunk ships");
+});

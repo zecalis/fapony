@@ -24,7 +24,11 @@ const check = (dir: string, ...args: string[]) => {
 
 // feature branch commit F, squash-merged onto the default branch as
 // "<subject> (#12)", branch deleted → F is held by no ref.
-function squashed(dir: string, subject = "feat: x"): { f: string; sq: string } {
+function squashed(
+  dir: string,
+  subject = "feat: x",
+  keepBranch = false,
+): { f: string; sq: string } {
   const base = git(dir, "branch --show-current");
   git(dir, "switch -c feat");
   writeFileSync(join(dir, "x.txt"), "x\n");
@@ -34,7 +38,7 @@ function squashed(dir: string, subject = "feat: x"): { f: string; sq: string } {
   git(dir, `switch ${base}`);
   git(dir, "merge --squash feat");
   git(dir, `commit -m "${subject} (#12)"`);
-  git(dir, "branch -D feat");
+  if (!keepBranch) git(dir, "branch -D feat");
   return { f, sq: git(dir, "rev-parse --short=7 HEAD") };
 }
 
@@ -105,4 +109,30 @@ test("testFixRepointsLinkToMovedPlanOutsideCode", () => {
     );
   });
   console.log("  ✓ --fix repoints a moved-plan link, skips code fences");
+});
+
+test("testFixRepointsSquashedTickWhoseBranchStillLives", () => {
+  withTempRepo((dir) => {
+    // squash-merged, but the worktree branch was never pruned: the tick is
+    // held (check is clean) yet not on the default branch (never "ready")
+    const { f, sq } = squashed(dir, "feat: x", true);
+    const file = writePlan(dir, `- [x] chunk 1 — a (${f})`);
+    assert.equal(check(dir).code, 0);
+    assert.match(check(dir, "--fix").out, new RegExp(`tick ${f} → ${sq}`));
+    assert.match(readFileSync(file, "utf8"), new RegExp(`\\(${sq}\\)`));
+    // a live branch commit with no successor is work in flight: left, silent
+    const base = git(dir, "branch --show-current");
+    git(dir, "switch -c wip");
+    writeFileSync(join(dir, "w.txt"), "w\n");
+    git(dir, "add w.txt");
+    git(dir, 'commit -m "wip"');
+    const wip = git(dir, "rev-parse --short=7 HEAD");
+    git(dir, `switch ${base}`);
+    const before = writePlan(dir, `- [x] chunk 1 — a (${wip})`);
+    const text = readFileSync(before, "utf8");
+    const r = check(dir, "--fix");
+    assert.match(r.out, /nothing to repair/);
+    assert.equal(readFileSync(before, "utf8"), text);
+  });
+  console.log("  ✓ --fix repoints a squashed tick even while its branch lives");
 });
