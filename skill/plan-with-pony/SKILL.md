@@ -221,6 +221,12 @@ needed.
 Section 6 — every step must be verifiable. Section 8 — must link back to anything it came from. **A step that needs something the system does not store yet** ("the month the accountant has seen",
 "last synced") must say where it lives, who writes it, and who reads it — or the executing agent
 designs it alone, by exploring (measured: one such chunk burned ~250k tokens before a line of code).
+**A measurement step fixes its verdict before it runs**: the metric, the data set or window it
+reads, the pass threshold, and what each outcome leads to ("if up, revert §5"). A threshold set
+after the result line is on screen bends to the result — ask the dev for any of the four the
+conversation did not give. It closes with the result's fael decision, ticked as
+`(fael:<decision id>)` (a measurement has no commit); a chunk given up is `[~]` with the decision
+saying why — `fapony plan` reads `[ ]`, `[x]`, `[~]` and flags any other box.
 **Plan = what/why/order, spec = how in detail**: never paste API shapes, schemas, wireframes, or
 edge-case tables into section 7; link to the spec instead. Full template: `templates/PLAN.md`.
 

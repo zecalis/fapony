@@ -598,3 +598,127 @@ test("testDriftWarnE2E", () => {
   });
   console.log("  ✓ plan-check e2e: drift warns appear but don't block");
 });
+
+// --- a fael decision closes a chunk; [~] = dropped; any other [?] is named ---
+
+import { firstSectionItems } from "../src/plan/sweep.js";
+import { withFakeFael } from "./helpers.js";
+
+test("testCheckTickedLineFaelAndDropped", () => {
+  withTempRepo((dir) => {
+    const { good } = repoWithShas(dir);
+    const known = (id: string) => id === "01M3AAAA";
+    const check = (line: string) =>
+      checkTickedLine(line, dir, undefined, known);
+    // a measurement chunk: no commit, the decision is the evidence
+    assert.deepEqual(check("- [x] chunk 6 — measured (fael:01M3AAAA)"), {
+      missing: [],
+      diverged: [],
+      cited: 1,
+    });
+    assert.deepEqual(check("- [x] chunk 6 — measured (fael:01M3ZZZZ)"), {
+      missing: ["fael:01M3ZZZZ"],
+      diverged: [],
+      cited: 1,
+    });
+    // dropped: the reason is required, a sha alone does not say why
+    assert.deepEqual(check("- [~] chunk 7 — dropped (fael:01M3AAAA)"), {
+      missing: [],
+      diverged: [],
+      cited: 1,
+    });
+    assert.deepEqual(check(`- [~] chunk 7 — dropped (${good})`).missing, [
+      "fael:?",
+    ]);
+  });
+  console.log("  ✓ checkTickedLine: (fael:<id>) cites, [~] needs one");
+});
+
+test("testFirstSectionDroppedAndUnknown", () => {
+  withTempRepo((dir) => {
+    const f = join(dir, "PLAN-t.md");
+    writeFileSync(
+      f,
+      "# T\n\n## TL;DR\n- [x] chunk 1 — a\n- [~] chunk 2 — b\n- [-] chunk 3 — c\n- [ ] chunk 4 — d\n",
+    );
+    const { checked, unchecked, unknown } = firstSectionItems(f);
+    assert.equal(checked.length, 2, "[~] closes like [x]");
+    assert.equal(unchecked.length, 1);
+    assert.deepEqual(unknown, ["- [-] chunk 3 — c"]);
+  });
+  console.log("  ✓ firstSectionItems: [~] closed, [-] unknown");
+});
+
+test("testKickoffDroppedAndFaelEvidence", () => {
+  withFakeFael((setRows) =>
+    withTempRepo((dir) => {
+      const { good } = repoWithShas(dir);
+      setRows([
+        {
+          id: "01M3AAAAFD11EM6258X96WCZ50",
+          ts: "2026-10-01T00:00:00Z",
+          kind: "decision",
+          text: "x",
+        },
+      ]);
+      const body = (last: string) =>
+        `# T\n\n## TL;DR\n- [x] chunk 5 — code (${good})\n- [x] chunk 6 — measured (fael:01M3AAAA)\n${last}\n`;
+      let out = kickoffOutput(
+        dir,
+        body("- [~] chunk 7 — dropped (fael:01M3AAAA)"),
+      );
+      // the short id fael prints names the full ULID
+      assert.doesNotMatch(out, /⚠/, `fael-cited closes stay silent:\n${out}`);
+      assert.match(out, /all chunks closed: 3\/3 chunks \(1 dropped\)/, out);
+      out = kickoffOutput(dir, body("- [~] chunk 7 — dropped, no reason"));
+      assert.match(
+        out,
+        /⚠ chunk 7: dropped chunk cites no \(fael:<id>\) decision saying why/,
+        out,
+      );
+      out = kickoffOutput(dir, body("- [-] chunk 7 — ?"));
+      assert.match(
+        out,
+        /⚠ unknown checkbox, not counted: - \[-\] chunk 7/,
+        out,
+      );
+    }),
+  );
+  console.log("  ✓ kickoff: dropped tally, fael evidence, unknown marker");
+});
+
+test("testPlanCheckUnknownMarkerAndFaelMiss", () => {
+  withFakeFael((setRows) =>
+    withTempRepo((dir) => {
+      repoWithShas(dir);
+      setRows([]);
+      mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+      writeFileSync(
+        join(dir, ".fapony/plan/PLAN-t.md"),
+        "# T\n\n## TL;DR\n- [x] chunk 1 — measured (fael:01M3ZZZZ)\n- [-] chunk 2 — ?\n- [ ] chunk 3 — next\n",
+      );
+      // archived before a drop needed its reason: left alone
+      mkdirSync(join(dir, ".fapony", "done"), { recursive: true });
+      writeFileSync(
+        join(dir, ".fapony/done/PLAN-old.md"),
+        "# OLD\n\n## TL;DR\n- [~] chunk 1 — cut\n",
+      );
+      const proc = Bun.spawnSync(["bun", FAPONY, "plan", "check"], {
+        cwd: dir,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const err = proc.stderr.toString();
+      assert.equal(proc.exitCode, 1, err);
+      assert.match(
+        err,
+        /cites \(fael:01M3ZZZZ\) but fael has no such decision/,
+      );
+      assert.match(err, /unknown checkbox, not counted: - \[-\] chunk 2/);
+      assert.doesNotMatch(err, /PLAN-old/, `done/ drop is history:\n${err}`);
+    }),
+  );
+  console.log(
+    "  ✓ plan-check e2e: unknown marker and missing fael decision fail",
+  );
+});
