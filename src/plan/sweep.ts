@@ -150,18 +150,22 @@ const LABEL = "[A-Za-z]?\\d[A-Za-z0-9]*";
 export const chunkLabel = (item: string): string | null =>
   new RegExp(`\\bchunk[\\s-]*\\**(${LABEL})`, "i").exec(item)?.[1] ??
   new RegExp(
-    `^\\s*(?:[-*]\\s+(?:\\[[\\sxX]\\]\\s+)?)?[*_]*(${LABEL})[*_]*\\s+[—–]`,
+    `^\\s*(?:[-*]\\s+(?:\\[[\\sxX~]\\]\\s+)?)?[*_]*(${LABEL})[*_]*\\s+[—–]`,
   ).exec(item)?.[1] ??
   null;
 
 // checkbox lines of the first ## section (the TL;DR) only. Whole lines, so
-// callers can read the tick.
+// callers can read the tick. `checked` = closed: done `[x]` and dropped `[~]`
+// alike. Any other `[?]` lands in `unknown` so callers can say so: skipped
+// silently, a `[-]` read as "not a chunk" and "all chunks checked" was true
+// only by accident.
 export const firstSectionItems = (
   file: string,
-): { checked: string[]; unchecked: string[] } => {
-  const out: { checked: string[]; unchecked: string[] } = {
+): { checked: string[]; unchecked: string[]; unknown: string[] } => {
+  const out: { checked: string[]; unchecked: string[]; unknown: string[] } = {
     checked: [],
     unchecked: [],
+    unknown: [],
   };
   try {
     const text = readFileSync(file, "utf8");
@@ -174,6 +178,7 @@ export const firstSectionItems = (
     for (const line of block.split("\n")) {
       if (/^\s*[-*]\s+\[\s\]\s+.+$/.test(line)) out.unchecked.push(line);
       else if (TICK_RE.test(line)) out.checked.push(line);
+      else if (/^\s*[-*]\s+\[[^\]]\]\s/.test(line)) out.unknown.push(line);
     }
   } catch {
     // unreadable file — nothing ticked
@@ -339,6 +344,16 @@ export const collectBlockedTickedIssues = (active: string[]): string[] => {
   }
   return issues;
 };
+
+// A first-section checkbox that is neither [ ], [x] nor [~] counts for nothing:
+// the plan's tally and "all chunks closed" silently leave it out.
+export const collectMarkerIssues = (active: string[]): string[] =>
+  active.flatMap((f) =>
+    firstSectionItems(f).unknown.map(
+      (l) =>
+        `${relative(planBase, f)} — unknown checkbox, not counted: ${l.trim()}\n   fix: use [ ] open, [x] done or [~] dropped (cite the fael decision saying why)`,
+    ),
+  );
 
 // the ✅ shipped header is no longer on the first line — the current plan format starts with frontmatter
 // then `# title` (see templates/PLAN.md); check the file's head rather than a single first line
@@ -868,8 +883,36 @@ export const cmdPlanSweep = (a: string[]) => {
 // Standalone short shas only — lookarounds (not \b) so a 40-char sha never
 // matches on its tail: git resolves leading prefixes, a trailing slice would
 // false-positive as missing.
-/** A ticked checkbox line — `- [x]`, `* [X]`; the one test for every caller. */
-export const TICK_RE = /^\s*[-*]\s+\[[xX]\]\s/;
+/** A closed checkbox line — done `- [x]` / `* [X]`, or dropped `- [~]`; the
+ *  one test for every caller. A dropped chunk closes like a done one, but its
+ *  evidence is the fael decision saying why: `(fael:<id>)`. */
+export const TICK_RE = /^\s*[-*]\s+\[[xX~]\]\s/;
+export const DROP_RE = /^\s*[-*]\s+\[~\]\s/;
+
+/** checkTickedLine's `fael:<id>` / `fael:?` miss, as one phrase. */
+export const missingFael = (ref: string): string =>
+  ref === "fael:?"
+    ? "dropped chunk cites no (fael:<id>) decision saying why"
+    : `ticked chunk cites (${ref}) but fael has no such decision`;
+
+// `(fael:<id>)` on a tick = a fael decision closed it — a measurement chunk
+// has no commit, a dropped one has only its reason. The id may be the short
+// form fael prints (`01M3SE3V` of a 26-char ULID): a prefix naming exactly one
+// decision. One `fael find --all` per cwd; fael missing reads as "no such
+// decision", never as proof.
+const FAEL_REF_RE = /\(fael:([0-9A-Za-z]+)\)/g;
+let decisionCache: { cwd: string; ids: string[] } | null = null;
+export const isFaelDecision = (id: string, cwd: string): boolean => {
+  if (decisionCache?.cwd !== cwd)
+    decisionCache = {
+      cwd,
+      ids: readFaelLog(cwd)
+        .rows.filter((r) => r.kind === "decision" && r.id)
+        .map((r) => (r.id as string).toUpperCase()),
+    };
+  const want = id.toUpperCase();
+  return decisionCache.ids.filter((d) => d.startsWith(want)).length === 1;
+};
 
 export const SHA_RE = /(?<![0-9a-f])[0-9a-f]{7,12}(?![0-9a-f])/g;
 
@@ -1024,6 +1067,7 @@ export const checkTickedLine = (
   line: string,
   cwd: string,
   held: (full: string, cwd: string) => boolean = isHeldByRef,
+  decision: (id: string, cwd: string) => boolean = isFaelDecision,
 ): { missing: string[]; diverged: string[]; cited: number } => {
   const ambiguous: string[] = [];
   const open: string[] = [];
@@ -1044,6 +1088,14 @@ export const checkTickedLine = (
     if (n === 1) merged = true;
     else (n ? ambiguous : open).push(`#${m[1]}`);
   }
+  let faelCited = false;
+  for (const m of line.matchAll(FAEL_REF_RE)) {
+    cited++;
+    faelCited = true;
+    if (!decision(m[1], cwd)) missing.push(`fael:${m[1]}`);
+  }
+  // a drop with no reason on record proves nothing, a sha beside it or not
+  if (DROP_RE.test(line) && !faelCited) missing.push("fael:?");
   let inFlight = false;
   for (const [sha, f] of found) {
     if (f.commit) {
@@ -1169,10 +1221,14 @@ export const cmdPlanCheck = (a: string[]) => {
         if (!missing.length && !diverged.length) verified++;
       }
       for (const sha of missing) {
+        // done/ was archived before a drop needed its reason — history stays
+        if (sha === "fael:?" && !active.includes(f)) continue;
         issues.push(
-          sha.startsWith("#")
-            ? `${relPath}:${i + 1} — ticked chunk cites (${sha}) but the default branch has no single commit ending (${sha})\n   fix: cite the merged commit's sha or leave the chunk unticked`
-            : `${relPath}:${i + 1} — ticked chunk cites ${sha} but git has no such commit\n   fix: correct the sha or leave the chunk unticked`,
+          sha.startsWith("fael:")
+            ? `${relPath}:${i + 1} — ${missingFael(sha)}\n   fix: record why with \`fael add decision "…" --files …\` and cite its id as (fael:<id>)`
+            : sha.startsWith("#")
+              ? `${relPath}:${i + 1} — ticked chunk cites (${sha}) but the default branch has no single commit ending (${sha})\n   fix: cite the merged commit's sha or leave the chunk unticked`
+              : `${relPath}:${i + 1} — ticked chunk cites ${sha} but git has no such commit\n   fix: correct the sha or leave the chunk unticked`,
         );
       }
       for (const sha of diverged) {
@@ -1193,6 +1249,7 @@ export const cmdPlanCheck = (a: string[]) => {
   //    chunk ticked is deferred doc debt: shippedNotMoved never lists it
   //    (HELD excludes it), so without this flag it sits in plan/ silently.
   for (const issue of collectBlockedTickedIssues(active)) issues.push(issue);
+  for (const issue of collectMarkerIssues(active)) issues.push(issue);
 
   // 7) Drift warns — W1 (not-started header + ticks) and W2 (all ticked +
   //    not shipped). WARN-only: counted separately, never changes exit code.

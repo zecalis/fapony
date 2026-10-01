@@ -18,7 +18,9 @@ import { doneDir, planBase, planDir, rel, root } from "./store.js";
 import {
   checkTickedLine,
   chunkLabel,
+  DROP_RE,
   firstSectionItems,
+  missingFael,
   openRowsFor,
   parsePlanFrontmatter,
   planKeyName,
@@ -38,27 +40,46 @@ const SPEC_TITLE_MAX = 50;
  *  point here. */
 export const chunkRules = (anchor: string): string[] => [
   "batching: one session = one branch = one squash-merged PR, up to 3 chunks of this plan, one commit per chunk · a chunk gets its own PR when it changes a DB schema/migration or persisted format, touches auth/permissions/security or money logic, changes a public API/CLI contract, or needs a design review · close each chunk fully (tick + handoff note + commit) before the next; stop at anything that needs a human decision · a chunk that must build on an unmerged branch is stacked (PR base = that branch; once it merges: `git rebase --onto origin/main <lower> <upper>`)",
-  `closing a step: tick TL;DR with sha · \`git commit\` files only · \`fael add note "<what the next chunk must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note) · after \`gh pr create\`, append \`(#N)\` to that tick (a squash rewrites the sha, \`(#N)\` survives it)`,
+  `closing a step: tick TL;DR with sha — no commit (a measurement) cites \`(fael:<decision id>)\` instead, a dropped chunk is \`[~]\` + the decision saying why · \`git commit\` files only · \`fael add note "<what the next chunk must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note; a chunk run in parallel with another open chunk of this plan, in another worktree, writes \`--key ${anchor}:chunk-<n>\` instead, <n> digits only) · after \`gh pr create\`, append \`(#N)\` to that tick (a squash rewrites the sha, \`(#N)\` survives it)`,
 ];
 
-/** First-section items with the `- [ ] ` / `- [x] ` marker cut off. */
+/** First-section items with the `- [ ] ` / `- [x] ` / `- [~] ` marker cut
+ *  off — `dropped` counts the `[~]` share of `checked`; `lastTick` keeps its
+ *  marker, a drop is judged by it. */
 const readPlanSectionItems = (
   planPath: string,
-): { checked: string[]; unchecked: string[] } => {
-  const strip = (l: string) => l.replace(/^\s*[-*]\s+\[[\sxX]\]\s+/, "").trim();
-  const { checked, unchecked } = firstSectionItems(planPath);
-  return { checked: checked.map(strip), unchecked: unchecked.map(strip) };
+): {
+  checked: string[];
+  unchecked: string[];
+  dropped: number;
+  unknown: string[];
+  lastTick?: string;
+} => {
+  const strip = (l: string) =>
+    l.replace(/^\s*[-*]\s+\[[\sxX~]\]\s+/, "").trim();
+  const { checked, unchecked, unknown } = firstSectionItems(planPath);
+  return {
+    checked: checked.map(strip),
+    unchecked: unchecked.map(strip),
+    dropped: checked.filter((l) => DROP_RE.test(l)).length,
+    unknown: unknown.map((l) => l.trim()),
+    lastTick: checked.at(-1),
+  };
 };
+
+const tally = (s: ReturnType<typeof readPlanSectionItems>): string =>
+  `${s.checked.length}/${s.checked.length + s.unchecked.length} chunks${s.dropped ? ` (${s.dropped} dropped)` : ""}`;
 
 // One line saying whether the last ticked chunk actually closed. Verified
 // shas stay silent; only the newest ticked chunk is ever mentioned. A tick
 // with no label the parser can read is "the last tick", never a made-up one.
-const closureHint = (checked: string[]): string | null => {
-  const last = checked[checked.length - 1];
+const closureHint = (last?: string): string | null => {
   if (!last) return null;
   const { missing, diverged, cited } = checkTickedLine(last, root);
   const label = chunkLabel(last);
   const who = label ? `chunk ${label} is ticked but ` : "last tick: ";
+  if (missing[0]?.startsWith("fael:"))
+    return `⚠ ${label ? `chunk ${label}: ` : "last tick: "}${missingFael(missing[0])} — nothing proves it closed`;
   if (missing.length)
     return `⚠ ${who}${
       missing[0].startsWith("#")
@@ -184,7 +205,8 @@ function showFiles(files: string[]): void {
 }
 
 function showPlan(file: string, chunk: string | null): void {
-  const { checked, unchecked } = readPlanSectionItems(file);
+  const items = readPlanSectionItems(file);
+  const { unchecked } = items;
   console.log(`# ${readPlanTitle(file) || basename(file)} — ${rel(file)}`);
   const spec = specFile(file);
   if (spec) console.log(specLine(spec));
@@ -205,10 +227,16 @@ function showPlan(file: string, chunk: string | null): void {
       for (const c of later) console.log(`- ${headline(c)}`);
     }
   } else {
-    console.log(`\n(all chunks checked — ready to ship or archive)`);
+    console.log(
+      `\n(all chunks closed: ${tally(items)} — ready to ship or archive)`,
+    );
   }
-  const hint = closureHint(checked);
+  const hint = closureHint(items.lastTick);
   if (hint) console.log(hint);
+  for (const l of items.unknown)
+    console.log(
+      `⚠ unknown checkbox, not counted: ${clip(l)} — use [ ], [x] or [~] (dropped)`,
+    );
 
   // Handoff = the rows the session opening the next chunk came for:
   // `plan:<name>:handoff` (one key per plan, fael keeps only the newest open)
@@ -272,14 +300,15 @@ function showAll(): void {
     );
   console.log(`# ${rel(planDir)}/ — ${active.length} active plan(s)`);
   for (const f of active) {
-    const { checked, unchecked } = readPlanSectionItems(f);
+    const items = readPlanSectionItems(f);
+    const { unchecked } = items;
     const fm = parsePlanFrontmatter(f);
     const tags = [
       isHighPriority(f) ? "priority:high" : "",
       fm.status === "blocked" ? `blocked_by: ${fm.blockedByRaw ?? "?"}` : "",
     ].filter(Boolean);
     console.log(
-      `\n- ${basename(f)} — ${checked.length}/${checked.length + unchecked.length} chunks${tags.length ? ` · ${tags.join(" · ")}` : ""}`,
+      `\n- ${basename(f)} — ${tally(items)}${items.unknown.length ? ` · ⚠ ${items.unknown.length} unknown checkbox(es)` : ""}${tags.length ? ` · ${tags.join(" · ")}` : ""}`,
     );
     if (unchecked[0]) console.log(`  next: ${clip(unchecked[0])}`);
   }

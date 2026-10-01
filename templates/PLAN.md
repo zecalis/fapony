@@ -27,6 +27,7 @@ priority: high                    # optional: high = listed first by `fapony pla
 - **Progress:**
   - [x] chunk 1 — <what landed>  `<short sha>` <YYYY-MM-DD> · verdict: <grade>
   - [ ] chunk 2 — <what is next>
+  - [~] chunk 3 — <dropped: why in one line>  (fael:<decision id>)
 
 ---
 
@@ -52,6 +53,8 @@ Table with 3–5 rows: risk | likelihood | impact | escape hatch
 2. **<Step 2>** — ...
 Each step must be verifiable before moving to the next
 A step needing state the system doesn't store yet must say where it lives, who writes it, who reads it
+A measurement step states before it runs: the metric, the data set / window, the pass threshold, and
+what each outcome leads to — it closes with the result's fael decision `(fael:<id>)`, not a commit
 
 ## 7. Examples (make it concrete)
 bash examples: before / after — **link into spec/, don't paste it.**
