@@ -233,6 +233,18 @@ function showPlan(file: string, chunk: string | null): void {
   }
   const hint = closureHint(items.lastTick);
   if (hint) console.log(hint);
+  // A criterion still marked (guess) when the next chunk starts gets measured
+  // against itself — the rule lived only in the skill. Whole file: the
+  // criteria sit in §3/§6, not on the one-line TL;DR chunk.
+  if (unchecked.length) {
+    const guesses = readFileSync(file, "utf8")
+      .split("\n")
+      .flatMap((l, i) => (l.includes("(guess)") ? [i + 1] : []));
+    if (guesses.length)
+      console.log(
+        `⚠ ${guesses.length} (guess) mark(s) still in the plan (line ${guesses.slice(0, 5).join(", ")}${guesses.length > 5 ? ", …" : ""}) — confirm or measure them before the chunk that depends on them`,
+      );
+  }
   for (const l of items.unknown)
     console.log(
       `⚠ unknown checkbox, not counted: ${clip(l)} — use [ ], [x] or [~] (dropped)`,
