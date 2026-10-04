@@ -93,6 +93,7 @@ export type PlanFrontmatter = {
   supersededBy: string | null;
   /** `spec: SPEC-x.md` — basename of the first token, a path is cut to its name. */
   spec: string | null;
+  parkedBecause: string | null;
 };
 
 // frontmatter is the only dep-graph source — no new schema, parse what agents
@@ -107,6 +108,7 @@ export const parsePlanFrontmatter = (file: string): PlanFrontmatter => {
     blocksRaw: null,
     supersededBy: null,
     spec: null,
+    parkedBecause: null,
   };
   try {
     const head = readFileSync(file, "utf8").slice(0, 4096);
@@ -114,7 +116,7 @@ export const parsePlanFrontmatter = (file: string): PlanFrontmatter => {
     if (!m) return out;
     for (const line of m[1].split("\n")) {
       const kv =
-        /^\s*(status|kind|blocked_by|blocks|superseded_by|spec)\s*:\s*(.+?)\s*$/.exec(
+        /^\s*(status|kind|blocked_by|blocks|superseded_by|spec|parked_because)\s*:\s*(.+?)\s*$/.exec(
           line,
         );
       if (!kv) continue;
@@ -125,6 +127,7 @@ export const parsePlanFrontmatter = (file: string): PlanFrontmatter => {
       else if (kv[1] === "blocked_by") out.blockedByRaw = v;
       else if (kv[1] === "blocks") out.blocksRaw = v;
       else if (kv[1] === "spec") out.spec = v && basename(v.split(/\s/)[0]);
+      else if (kv[1] === "parked_because") out.parkedBecause = v;
       else out.supersededBy = v;
     }
   } catch {
@@ -132,6 +135,10 @@ export const parsePlanFrontmatter = (file: string): PlanFrontmatter => {
   }
   return out;
 };
+
+// blocked_by is often a sentence — a listing gets one line, not a paragraph
+export const blockedByShort = (raw: string | null): string =>
+  !raw ? "?" : raw.length > 80 ? `${raw.slice(0, 79)}…` : raw;
 
 // every PLAN-*.md token inside the raw value (comma list or a sentence that
 // names a plan). Deduped basenames — resolution tries planDir then doneDir.
@@ -510,15 +517,19 @@ export const rewriteMarkdownLinks = (
 // The first fix (stripping only `](target)`) missed — it left `[display-text]` unwrapped, making an already
 // valid link like `[PLAN-x.md](../done/PLAN-x.md)` (the actual pattern throughout this file) get double-counted as a
 // plain-text mention — strip the whole [..](..) block, not just the (..) part
+// Only a mention that carries the old directory (`plan/PLAN-x.md`) can point
+// at the wrong place after a move — a bare `PLAN-x.md` names no location, so
+// counting it reported 9 "mentions" on a park that broke nothing.
 export const countPlainTextMentions = (
   file: string,
   target: string,
+  fromDir: string,
 ): number => {
   const src = readFileSync(file, "utf8");
   const baseName = target.replace(/\.md$/, "");
   const withoutLinks = src.replace(/\[[^\]]*\]\([^)]+\)/g, "");
   const plainRe = new RegExp(
-    `\\b${escapeRe(baseName)}(?:\\.md)?\\b(?!\\.\\w)`,
+    `\\b${escapeRe(fromDir)}/${escapeRe(baseName)}(?:\\.md)?\\b(?!\\.\\w)`,
     "g",
   );
   let count = 0;
@@ -634,9 +645,18 @@ const moveFile = (src: string, dst: string): void => {
 // Everything under planBase/ is auto-fixed, so what remains is repo docs and
 // prose (README, docs/, CLAUDE.md) with hand-written paths.
 // cwd: root — the pathspecs are root-relative no matter where fapony runs from.
-const warnOutside = (name: string): void => {
+// Same rule as countPlainTextMentions: only `<fromDir>/<name>` can be stale.
+const warnOutside = (name: string, fromDir: string): void => {
   const grep = Bun.spawnSync(
-    ["git", "grep", "-l", name, "--", ".", `:!${rel(planBase)}`],
+    [
+      "git",
+      "grep",
+      "-lF",
+      `${fromDir}/${name}`,
+      "--",
+      ".",
+      `:!${rel(planBase)}`,
+    ],
     { cwd: root },
   )
     .stdout.toString()
@@ -669,7 +689,7 @@ const archiveSpec = (plan: string): string | null => {
   let inbound = 0;
   for (const f of mdFiles(planBase))
     if (f !== dst) inbound += rewriteMarkdownLinks(f, src, dst);
-  warnOutside(name);
+  warnOutside(name, basename(dirname(src)));
   return `moved spec ${rel(src)} → ${rel(dst)} — no active plan names it any more (inbound links rewritten: ${inbound})`;
 };
 
@@ -689,33 +709,27 @@ export const relocatePlan = (src: string, toDir: string): string => {
   mkdirSync(toDir, { recursive: true });
   moveFile(src, dst);
   const ownLinks = rewriteMovedFileLinks(dst, dirname(src), toDir);
+  const fromDir = basename(dirname(src));
   let inbound = 0;
-  let inboundFiles = 0;
   let plainTextTotal = 0;
   const plainTextFiles: string[] = [];
   for (const f of mdFiles(planBase)) {
     if (f === dst) continue;
-    const n = rewriteMarkdownLinks(f, src, dst);
-    if (n) {
-      inbound += n;
-      inboundFiles++;
-    }
-    const p = countPlainTextMentions(f, name);
+    inbound += rewriteMarkdownLinks(f, src, dst);
+    const p = countPlainTextMentions(f, name, fromDir);
     if (p) {
       plainTextTotal += p;
       plainTextFiles.push(f.replace(`${planBase}/`, ""));
     }
   }
-  console.log(`moved ${rel(src)} → ${rel(dst)}`);
-  console.log(`links rewritten inside the file: ${ownLinks}`);
   console.log(
-    `inbound links rewritten: ${inbound} in ${inboundFiles} file(s) (scanned ${rel(planBase)}/**)`,
+    `moved ${rel(src)} → ${rel(dst)} (links rewritten: ${ownLinks} own, ${inbound} inbound · stale mentions: ${plainTextTotal})`,
   );
   if (plainTextTotal > 0)
     console.log(
-      `⚠ ${plainTextTotal} plain-text mention(s) in ${plainTextFiles.length} file(s) under ${rel(planBase)}/ — grep and update the paths yourself:\n${plainTextFiles.join("\n")}`,
+      `⚠ ${plainTextTotal} plain-text "${fromDir}/${name}" mention(s) under ${rel(planBase)}/ — update the paths yourself:\n${plainTextFiles.join("\n")}`,
     );
-  warnOutside(name);
+  warnOutside(name, fromDir);
   return dst;
 };
 
@@ -783,7 +797,7 @@ export const cmdPlanSweep = (a: string[]) => {
         const { checked, unchecked } = countFirstSection(f);
         const spec = rel(f);
         const openN = openRowsFor(spec).length;
-        const by = parsePlanFrontmatter(f).blockedByRaw ?? "?";
+        const by = blockedByShort(parsePlanFrontmatter(f).blockedByRaw);
         console.log(
           `- ${spec} — ${checked}/${checked + unchecked} chunks · blocked_by: ${by}${openN ? ` · ⚠ ${openN} open row(s)` : ""}`,
         );
@@ -814,7 +828,7 @@ export const cmdPlanSweep = (a: string[]) => {
   if (!apply) {
     if (fm.status === "blocked") {
       console.log(
-        `${target}: status:blocked (blocked_by: ${fm.blockedByRaw ?? "?"}) — not a move candidate, stays in plan/`,
+        `${target}: status:blocked (blocked_by: ${blockedByShort(fm.blockedByRaw)}) — not a move candidate, stays in plan/`,
       );
       return;
     }
@@ -1170,9 +1184,6 @@ export const cmdPlanCheck = (a: string[]) => {
 
   // 1) List active PLANs
   const active = mdFiles(dir).filter((f) => !f.includes("/done/"));
-  if (!quiet) {
-    console.log(`${rel(dir)}/ — ${active.length} file(s) (active)\n`);
-  }
 
   // 2) Shipped-not-moved check
   const shipped = shippedNotMoved();
@@ -1280,12 +1291,16 @@ export const cmdPlanCheck = (a: string[]) => {
   const driftWarns = collectDriftWarns(active);
   driftWarns.push(...collectUnadoptedDocWarns(active));
 
-  if (!quiet) {
+  // clean = one line: the counts barely move run to run, they only help read
+  // a failure. Drift warns are not blocking but still worth the lines.
+  if (!quiet && issues.length) {
+    console.log(`${rel(dir)}/ — ${active.length} file(s) (active)\n`);
     console.log(
       `closed chunks: ${closed} · citing a commit: ${citing} · verified: ${verified}`,
     );
-    // blocked view: waiting plans are never move candidates, but their debt
-    // (progress + open mem rows) must be visible somewhere — plan-check is it.
+    // blocked view: waiting plans are never move candidates — their debt
+    // (progress + open mem rows) sits beside the failure; `fapony plan` and
+    // `plan sweep` list them on every run.
     const blocked = active.filter(
       (f) => parsePlanFrontmatter(f).status === "blocked",
     );
@@ -1297,16 +1312,16 @@ export const cmdPlanCheck = (a: string[]) => {
         const { checked, unchecked } = countFirstSection(f);
         const spec = rel(f);
         const openN = openRowsFor(spec).length;
-        const by = parsePlanFrontmatter(f).blockedByRaw ?? "?";
+        const by = blockedByShort(parsePlanFrontmatter(f).blockedByRaw);
         console.log(
           `- ${spec} — ${checked}/${checked + unchecked} chunks · blocked_by: ${by}${openN ? ` · ⚠ ${openN} open row(s)` : ""}`,
         );
       }
     }
-    if (driftWarns.length > 0) {
-      console.log(`\n⚠ ${driftWarns.length} drift warning(s) (not blocking):`);
-      for (const w of driftWarns) console.log(`- ${w}`);
-    }
+  }
+  if (!quiet && driftWarns.length > 0) {
+    console.log(`⚠ ${driftWarns.length} drift warning(s) (not blocking):`);
+    for (const w of driftWarns) console.log(`- ${w}`);
   }
 
   if (issues.length === 0) {

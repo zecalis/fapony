@@ -148,3 +148,32 @@ test("testParkWarnsOnAClaimedChunkAndTakesASymlinkedPath", () => {
     assert.match(out, /would move/, "a symlinked spelling is still plan/");
   });
 });
+
+test("testParkSeveralAtOnceRetiresBlockedAndCountsOnlyPathMentions", () => {
+  inRepo((_dir, f) => {
+    // a bare name points nowhere wrong; only `plan/PLAN-b.md` goes stale
+    writeFileSync(
+      join(f, "spec", "SPEC-b.md"),
+      "# SPEC-b\n\nPLAN-b.md · `PLAN-b` · see .fapony/plan/PLAN-b.md\n",
+    );
+    const dry = captureLogs(() => cmdPlanPark(["a", "b"], false));
+    assert.match(dry, /PLAN-a\.md: would move .*blocked_by → parked_because/);
+    assert.match(dry, /PLAN-b\.md: would move/);
+
+    const out = captureLogs(() => cmdPlanPark(["a", "b", "--apply"], false));
+    assert.match(out, /PLAN-a\.md .*stale mentions: 0\)/);
+    assert.match(out, /PLAN-b\.md .*stale mentions: 1\)/);
+    // a's reason is on file, so only b is asked for one
+    assert.equal((out.match(/record why/g) ?? []).length, 1, out);
+    assert.match(out, /--files plan:b/);
+    const a = readFileSync(join(f, "parked", "PLAN-a.md"), "utf8");
+    assert.ok(!a.includes("status: blocked"), "status: blocked dropped");
+    assert.ok(
+      a.startsWith("---\nkind: unit\nparked_because: PLAN-b.md\n---\n"),
+    );
+    assert.match(
+      captureLogs(() => cmdPlanNext(["PLAN-a.md"])),
+      /parked_because: PLAN-b\.md/,
+    );
+  });
+});

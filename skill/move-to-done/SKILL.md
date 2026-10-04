@@ -41,11 +41,12 @@ You are about to move a PLAN that has been shipped to the archive.
    A plan **set aside because the situation changed** — not shipped, not replaced, no known
    thing to wait for, may resume someday — is parked, not blocked and not superseded:
    ```bash
-   fapony plan park <PLAN-foo.md>           # dry run: what moves
-   fapony plan park <PLAN-foo.md> --apply   # plan/ → parked/, links rewritten, spec stays
+   fapony plan park <PLAN-foo.md>…           # dry run: what moves
+   fapony plan park <PLAN-foo.md>… --apply   # plan/ → parked/, links rewritten, spec stays
    ```
-   Then run the `fael add decision "parked: …"` line it prints — why, and what would bring it
-   back. Don't edit `status:` for it; the folder is the state. Never park on your own reading;
+   Park drops `status: blocked` and keeps its `blocked_by:` as `parked_because:`. A plan with
+   no reason on file gets a `fael add decision "parked: …"` line — run it: why, and what would
+   bring it back. Don't edit `status:` for it; the folder is the state. Never park on your own reading;
    the user says so. Resume = `fapony plan unpark <PLAN-foo.md> --apply`. Never `mv` a plan
    between `plan/`, `parked/` and `done/` by hand — the link rewrite is the point.
 

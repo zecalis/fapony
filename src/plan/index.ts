@@ -7,7 +7,7 @@ import { cmdPlanPark } from "./park.js";
 import { initPlanStore } from "./store.js";
 import { cmdPlanCheck, cmdPlanSweep } from "./sweep.js";
 
-const HELP = `usage: fapony plan [<PLAN.md> | --files <path>] | adopt <any-doc.md> | sweep [<PLAN.md>] [--apply] | park|unpark <PLAN.md> [--apply] | check [--quiet] [--fix]
+const HELP = `usage: fapony plan [<PLAN.md> | --files <path>] | adopt <any-doc.md> | sweep [<PLAN.md>] [--apply] | park|unpark <PLAN.md>… [--apply] | check [--quiet] [--fix]
 
   fapony plan                 every active plan: progress + next unchecked chunk
   fapony plan <PLAN.md>       one plan: unchecked chunks, last-tick sha check,
@@ -25,10 +25,10 @@ const HELP = `usage: fapony plan [<PLAN.md> | --files <path>] | adopt <any-doc.m
                               move a shipped or superseded plan into done/
                               (git mv; plain rename when .fapony/ is gitignored)
                               + rewrite the links to it
-  fapony plan park <PLAN.md> --apply
+  fapony plan park <PLAN.md>… --apply
                               set a plan aside (situation changed, not shipped):
                               plan/ → parked/, links rewritten, spec stays in spec/
-  fapony plan unpark <PLAN.md> --apply
+  fapony plan unpark <PLAN.md>… --apply
                               parked/ → plan/, links rewritten
   fapony plan check           frontmatter deps, broken links, ticked-chunk shas
                               (exit 1 on issues; read-only)
