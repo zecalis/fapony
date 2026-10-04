@@ -67,8 +67,8 @@ request, ticket, or todo someone outside this workflow wrote. It is input, not a
   `(from doc)`, everything the doc doesn't say `(guess)`. Once you truth-checked a
   `(from doc)` line against the code, drop the tag.
 - **The anchor comes from the plan file, never from this text.** The adopted (or
-  seeded) PLAN already carries its `fael add note … --key …:handoff` handoff
-  line in §6 with the real anchor filled in — copy that line, don't invent one.
+  seeded) PLAN already carries a `**Handoff (fael):** anchor \`plan:<name>\`` line
+  with the real anchor filled in — use that anchor, don't invent one.
 - Pushback lives here, not in the CLI: the sync copied the doc verbatim and can't
   judge intent, so a destructive or contradictory request gets challenged in the
   draft (Phase 2), not silently chunked.
@@ -110,9 +110,12 @@ fapony plan-seed <feature> --spec --scope <path>
 
 One command, no MCP round trip. It writes `<planDir>/PLAN-<feature>.md` +
 `<specDir>/SPEC-<feature>.md` — the frontmatter, the 8 empty sections, a `## 8. References` list
-of shipped plans that already touched this scope, and a `## Context (fapony)` block under the
-TL;DR (recent fael decisions plus what is already in scope — one line per scope file with its
-exports; needs `--scope` to list anything). No ledger-ranking line: the ledger is frozen and
+line counting shipped plans that already mention this scope, and a `## Context (fapony)` block
+under the TL;DR (Known traps — open fael issues/decisions whose files are in scope — plus what is
+already in scope, one line per scope file with its exports; needs `--scope` to list anything).
+No `status:` — omit = not started. Stdout flags open chunks of other plans that mention a scope
+file (path, basename or stem): that is a plan already doing this work — merge or order, don't
+draft a second one. No ledger-ranking line: the ledger is frozen and
 cross-model ranking claims are off the table, so the seed does not point at them. SPEC chunks carry
 verbatim signatures, hard-capped (PLAN ≤ ~60 / SPEC ≤ 200 lines), and capped lines say what was
 cut. Stdout ends with the existing plan list (active first, then shipped) — the seed that lands
@@ -211,9 +214,9 @@ becomes a second copy of the plan, and then neither copy can be trusted. `fapony
 checkboxes in the **first `##` section only**, so section 6 stays detail rather than status.
 
 **Chunk handoff has one shape.** Whoever closes chunk N (tick + sha + commit) leaves what chunk N+1
-must know as the `fael add note … --files … --key …:handoff` line already sitting in the plan's
-own §6 (seeded by `plan-seed`, or by `plan adopt` for an adopted doc) — copy it, fill in the files
-and the note text. Use the plan's own anchor, never the PLAN path: the path
+must know as a `fael add note … --files … --key …:handoff` — the closing line `fapony plan
+PLAN-<name>.md` prints carries the exact command, and the plan's own `**Handoff (fael):**` line
+(seeded by `plan-seed`, or by `plan adopt` for an adopted doc) names the anchor. Use the plan's own anchor, never the PLAN path: the path
 changes on `fapony plan sweep` and sits in a gitignored folder. The next session opens the chunk
 with `fapony plan PLAN-<name>.md`, which lists those rows with the next chunk's first — no hook
 needed.

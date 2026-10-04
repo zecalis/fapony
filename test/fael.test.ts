@@ -4,11 +4,7 @@ import assert from "node:assert";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  faelLinesToMemRows,
-  readFaelLog,
-  recentDecisions,
-} from "../src/fael.js";
+import { faelLinesToMemRows, readFaelLog } from "../src/fael.js";
 import { withFakeFael } from "./helpers.js";
 
 test("testFaelRowsMapToMemRows", () => {
@@ -84,29 +80,4 @@ test("testReadFaelLogUsesPathAndReportsMissing", () => {
   } finally {
     process.env.PATH = orig;
   }
-});
-
-test("testRecentDecisionsPrefersKeywordHits", () => {
-  const { rows } = faelLinesToMemRows(
-    [
-      { id: "a", ts: "2026-09-03T00:00:00Z", kind: "decision", text: "new" },
-      { id: "b", ts: "2026-09-02T00:00:00Z", kind: "note", text: "old note" },
-      { id: "c", ts: "2026-09-01T00:00:00Z", kind: "decision", text: "old" },
-    ]
-      .map((r) => JSON.stringify({ by: "t", ...r }))
-      .join("\n"),
-  );
-  assert.deepEqual(
-    recentDecisions(rows, 2).map((r) => r.id),
-    ["a", "c"],
-  );
-  assert.deepEqual(
-    recentDecisions(rows, 1, ["OLD"]).map((r) => r.id),
-    ["c"],
-  );
-  assert.deepEqual(
-    recentDecisions(rows, 1, ["nope"]).map((r) => r.id),
-    ["a"],
-    "no hit → newest",
-  );
 });
