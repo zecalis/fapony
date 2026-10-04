@@ -175,5 +175,15 @@ test("testParkSeveralAtOnceRetiresBlockedAndCountsOnlyPathMentions", () => {
       captureLogs(() => cmdPlanNext(["PLAN-a.md"])),
       /parked_because: PLAN-b\.md/,
     );
+
+    const back = captureLogs(() => cmdPlanPark(["a"], true));
+    assert.match(back, /PLAN-a\.md: would move .*parked_because dropped/);
+    captureLogs(() => cmdPlanPark(["a", "--apply"], true));
+    assert.ok(
+      readFileSync(join(f, "plan", "PLAN-a.md"), "utf8").startsWith(
+        "---\nkind: unit\n---\n",
+      ),
+      "unpark drops parked_because",
+    );
   });
 });

@@ -511,6 +511,22 @@ test("testPlanSweepBlocksOnOpenHandoffNotes", () => {
       }).stdout.toString();
       assert.doesNotMatch(dry, /ready to move/);
       assert.match(dry, /open handoff.*\n.*\[h1\]/);
+      // a decision under the plan's anchor is history, not a handoff
+      setRows([
+        {
+          id: "d1",
+          ts: "2026-09-29T00:00:00Z",
+          kind: "decision",
+          text: "review fixes landed in PR 114",
+          key: "plan:d:pr-114",
+        },
+      ]);
+      const moved = sweep();
+      assert.equal(
+        moved.exitCode,
+        0,
+        `a non-handoff key must not block:\n${moved.stderr}`,
+      );
     });
   });
   console.log(

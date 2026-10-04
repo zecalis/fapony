@@ -47,7 +47,7 @@ You are about to move a PLAN that has been shipped to the archive.
    Park drops `status: blocked` and keeps its `blocked_by:` as `parked_because:`. A plan with
    no reason on file gets a `fael add decision "parked: …"` line — run it: why, and what would
    bring it back. Don't edit `status:` for it; the folder is the state. Never park on your own reading;
-   the user says so. Resume = `fapony plan unpark <PLAN-foo.md> --apply`. Never `mv` a plan
+   the user says so. Resume = `fapony plan unpark <PLAN-foo.md> --apply` (drops `parked_because:`). Never `mv` a plan
    between `plan/`, `parked/` and `done/` by hand — the link rewrite is the point.
 
  1c. **Check the dep graph before moving** — `fapony plan check` reads `blocked_by`/`blocks`
@@ -58,8 +58,8 @@ You are about to move a PLAN that has been shipped to the archive.
 
 2. **Run `fapony plan sweep --apply`** — this does the `git mv`, rewrites markdown links inside the
    file and inbound links from every `.md` under `.fapony/` (`plan/`, `done/`, `spec/`),
-   warns about plain-text mentions and about tracked files outside `.fapony/` that still
-   name the file, prints a `🔓 <shipped> — <waiter> lists it as blocker` line when the ship
+   warns about plain-text mentions that still carry the old path (`plan/PLAN-x.md`) — under
+   `.fapony/` and in tracked files outside it, prints a `🔓 <shipped> — <waiter> lists it as blocker` line when the ship
    unblocks a waiting plan (copy that line into your summary — the waiter keeps
    `status: blocked` until its owner clears it) — all in one call:
    ```bash
