@@ -12,10 +12,10 @@
 //               owns that list.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { misfiledHandoffs, orphanHandoffKeys, pickChunks } from "./parallel.js";
 import { mentionsOfFiles, resolvePlan } from "./resolve.js";
-import { doneDir, planBase, planDir, rel, root } from "./store.js";
+import { doneDir, parkedDir, planBase, planDir, rel, root } from "./store.js";
 import {
   checkTickedLine,
   chunkLabel,
@@ -223,6 +223,10 @@ function showPlan(file: string, chunk: string | null): void {
   const items = readPlanSectionItems(file);
   const { unchecked } = items;
   console.log(`# ${readPlanTitle(file) || basename(file)} — ${rel(file)}`);
+  if (dirname(file) === parkedDir)
+    console.log(
+      `⚠ parked — set aside, not active; resume with fapony plan unpark ${basename(file)} --apply`,
+    );
   const spec = specFile(file);
   if (spec) console.log(specLine(spec));
   // `plan:x:chunk-<label>` picks that chunk as "next"; else the picker: the
@@ -392,19 +396,27 @@ function showAll(): void {
       );
   }
   // A handoff key that names no plan is a note no `fapony plan` will show.
-  const names = [planDir, doneDir].flatMap((d) =>
+  const names = [planDir, parkedDir, doneDir].flatMap((d) =>
     existsSync(d) ? readdirSync(d).flatMap((n) => planKeyName(n) ?? []) : [],
   );
   const orphans = orphanHandoffKeys(openRows(), names);
   if (orphans.length)
     console.log(
-      `\n⚠ ${orphans.length} open handoff key(s) name no plan in ${rel(planDir)}/ or ${rel(doneDir)}/: ${orphans.slice(0, 5).join(", ")} — re-file under plan:<name>:handoff (--supersedes <id>)`,
+      `\n⚠ ${orphans.length} open handoff key(s) name no plan in ${rel(planDir)}/, ${rel(parkedDir)}/ or ${rel(doneDir)}/: ${orphans.slice(0, 5).join(", ")} — re-file under plan:<name>:handoff (--supersedes <id>)`,
     );
   if (shipped.size) {
     console.log(`\n## shipped but not archived into done/ (${shipped.size})`);
     for (const n of shipped) console.log(`- ${n}`);
     console.log(`(move: ${planSweepCmd} <file.md> --apply)`);
   }
+  // parked plans are set aside, not active — one line so they stay findable
+  const parked = existsSync(parkedDir)
+    ? readdirSync(parkedDir).filter((n) => n.endsWith(".md"))
+    : [];
+  if (parked.length)
+    console.log(
+      `\n## parked (${parked.length}) — ${parked.sort().join(", ")} (resume: fapony plan unpark <PLAN.md> --apply)`,
+    );
 }
 
 export function cmdPlanNext(a: string[]): void {

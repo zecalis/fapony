@@ -6,7 +6,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { doneDir, planBase, planDir, root } from "./store.js";
+import { doneDir, parkedDir, planBase, planDir, root } from "./store.js";
 
 export type Resolved =
   | { ok: true; file: string; chunk: string | null }
@@ -20,7 +20,7 @@ const stemOf = (file: string): string =>
   ).toLowerCase();
 
 const listDocs = (): { file: string; key: string }[] =>
-  [planDir, doneDir].flatMap((dir) => {
+  [planDir, parkedDir, doneDir].flatMap((dir) => {
     try {
       return readdirSync(dir)
         .filter((f) => f.endsWith(".md"))
@@ -103,6 +103,7 @@ export const mentionsOfFiles = (files: string[]): Mention[] =>
   findMentions(
     [
       { abs: planDir, label: "plan" },
+      { abs: parkedDir, label: "parked" },
       { abs: doneDir, label: "done" },
       { abs: join(planBase, "spec"), label: "spec" },
     ],

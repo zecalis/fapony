@@ -111,3 +111,19 @@ test("testMvGuardClaudeOutputShape", () => {
   });
   console.log("  ✓ mv guard claude output = permissionDecision deny");
 });
+
+test("testMvGuardDeniesParkAndUnparkByHand", () => {
+  assert.match(
+    mvGuardDecision("git mv .fapony/plan/PLAN-x.md .fapony/parked/") ?? "",
+    /plan park --apply \.fapony\/plan\/PLAN-x\.md/,
+  );
+  assert.match(
+    mvGuardDecision("mv .fapony/parked/PLAN-x.md .fapony/plan/PLAN-x.md") ?? "",
+    /plan unpark --apply \.fapony\/parked\/PLAN-x\.md/,
+  );
+  assert.equal(
+    mvGuardDecision("git mv .fapony/plan/PLAN-a.md .fapony/plan/PLAN-b.md"),
+    null,
+    "a rename inside plan/ moves no links",
+  );
+});

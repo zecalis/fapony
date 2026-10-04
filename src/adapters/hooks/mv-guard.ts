@@ -1,6 +1,6 @@
 // src/adapters/hooks/mv-guard.ts — PreToolUse Bash guard: deny a raw `mv` /
-// `git mv` of a plan file into a done/ directory, point at `fapony plan sweep
-// --apply` instead.
+// `git mv` of a plan file between plan/, parked/ and done/, point at
+// `fapony plan sweep|park|unpark --apply` instead.
 //
 // Manual `mv` skips the link rewrite plan-sweep does — that produced two
 // rounds of dangling links (mem mtjn3ldk, mtl15q4y) and once, a plan moved to
@@ -16,18 +16,28 @@
 // an unanchored `mv` also matched grep/echo/commit-message prose that merely
 // spelled the pattern out, denying read-only commands. Only a command that
 // actually runs `mv`/`git mv` is denied.
+// Source: a plan in plan/ or parked/. Target: a done/, parked/ or plan/ dir
+// (or a PLAN file inside one) ending the token — so a rename inside the same
+// dir passes, and `plan/done/` (legacy layout) reads as done/.
 const MV_PATTERN =
-  /(?:^|[;&|\n])\s*(?:git\s+)?mv\s+(?:-\S+\s+)*["']?([^"'\s]*\.fapony\/(?:[^/\s]+\/)*plan\/PLAN-[^"'\s]+\.md)["']?\s+["']?([^"'\s]*\bdone\/?)["']?/;
+  /(?:^|[;&|\n])\s*(?:git\s+)?mv\s+(?:-\S+\s+)*["']?([^"'\s]*\.fapony\/(?:[^/\s]+\/)*(plan|parked)\/PLAN-[^"'\s]+\.md)["']?\s+["']?[^"'\s]*\b(done|parked|plan)(?:\/(?:PLAN-[^"'\s]*\.md)?)?(?=["']?(?:\s|$|[;&|]))/;
 
-/** Deny reason for a raw `git mv <plan>.md <...done/>` command, or null to allow. */
+const FIX: Record<string, string> = {
+  done: "fapony plan sweep",
+  parked: "fapony plan park",
+  plan: "fapony plan unpark",
+};
+
+/** Deny reason for a raw `mv` of a plan between plan/, parked/ and done/, or null to allow. */
 export function mvGuardDecision(command: unknown): string | null {
   if (typeof command !== "string" || command === "") return null;
   const m = MV_PATTERN.exec(command);
   if (!m) return null;
-  const [, src] = m;
+  const [, src, from, to] = m;
+  if (from === to) return null; // a rename inside one dir moves no links
   return (
-    `fapony: raw \`git mv\` of a plan into done/ skips the link rewrite — ` +
-    `run \`fapony plan sweep --apply ${src}\` instead, it moves the file ` +
+    `fapony: raw \`git mv\` of a plan into ${to}/ skips the link rewrite — ` +
+    `run \`${FIX[to]} --apply ${src}\` instead, it moves the file ` +
     `and fixes inbound/outbound links together.`
   );
 }

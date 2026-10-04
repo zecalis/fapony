@@ -3,6 +3,7 @@
 // plan/ and done/ sit side by side under the repo's `.fapony/` (nearest one
 // walking up from cwd — app-scoped in a monorepo). done/ can be moved with
 // paths.doneDir in fapony.config.json; a legacy plan/done/ is honoured.
+// parked/ (beside plan/) holds plans set aside, not shipped — `plan park`.
 
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -13,11 +14,13 @@ export let root = "";
 export let planBase = "";
 export let planDir = "";
 export let doneDir = "";
+export let parkedDir = "";
 
 export function initPlanStore(cwd: string = process.cwd()): void {
   root = repoRootOf(cwd) ?? cwd;
   planBase = faponyDirFrom(cwd);
   planDir = join(planBase, "plan");
+  parkedDir = join(planBase, "parked");
 
   const configDir =
     planBase === join(root, FAPONY_DIR) ? root : dirname(planBase);

@@ -1,12 +1,13 @@
-// src/plan/index.ts — `fapony plan [<PLAN.md>] | adopt | sweep | check`
+// src/plan/index.ts — `fapony plan [<PLAN.md>] | adopt | sweep | park | unpark | check`
 
 import { cmdPlanAdopt } from "./adopt.js";
 import { fixPlanState } from "./fix.js";
 import { cmdPlanNext } from "./next.js";
+import { cmdPlanPark } from "./park.js";
 import { initPlanStore } from "./store.js";
 import { cmdPlanCheck, cmdPlanSweep } from "./sweep.js";
 
-const HELP = `usage: fapony plan [<PLAN.md> | --files <path>] | adopt <any-doc.md> | sweep [<PLAN.md>] [--apply] | check [--quiet] [--fix]
+const HELP = `usage: fapony plan [<PLAN.md> | --files <path>] | adopt <any-doc.md> | sweep [<PLAN.md>] [--apply] | park|unpark <PLAN.md> [--apply] | check [--quiet] [--fix]
 
   fapony plan                 every active plan: progress + next unchecked chunk
   fapony plan <PLAN.md>       one plan: unchecked chunks, last-tick sha check,
@@ -24,12 +25,17 @@ const HELP = `usage: fapony plan [<PLAN.md> | --files <path>] | adopt <any-doc.m
                               move a shipped or superseded plan into done/
                               (git mv; plain rename when .fapony/ is gitignored)
                               + rewrite the links to it
+  fapony plan park <PLAN.md> --apply
+                              set a plan aside (situation changed, not shipped):
+                              plan/ → parked/, links rewritten, spec stays in spec/
+  fapony plan unpark <PLAN.md> --apply
+                              parked/ → plan/, links rewritten
   fapony plan check           frontmatter deps, broken links, ticked-chunk shas
                               (exit 1 on issues; read-only)
   fapony plan check --fix     first repair what has exactly one answer: a tick whose
                               commit was squashed away → the squash commit on the
                               default branch; a link to a plan that moved between
-                              plan/ and done/. No match or several → reported only
+                              plan/, done/ and parked/. No match or several → reported only
 
 close a chunk: tick it with its sha, commit, then
   fael add note "<what chunk N+1 must know>" --files <f1>,plan:<name> --key plan:<name>:handoff
@@ -45,6 +51,8 @@ export function cmdPlan(a: string[]): void {
   initPlanStore();
   if (sub === "adopt") cmdPlanAdopt(rest);
   else if (sub === "sweep") cmdPlanSweep(rest);
+  else if (sub === "park" || sub === "unpark")
+    cmdPlanPark(rest, sub === "unpark");
   else if (sub === "check") {
     if (rest.includes("--fix")) fixPlanState();
     cmdPlanCheck(rest);
