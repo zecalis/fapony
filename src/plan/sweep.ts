@@ -36,7 +36,7 @@ export const planKeyName = (planPath: string): string | null =>
 // A files[] entry of plan:<name>:chunk-N names the plan just as a key of the
 // same shape does — exact-only on files[] slipped those rows out.
 let openCache: { root: string; rows: MemRow[] } | null = null;
-const openRows = (): MemRow[] => {
+export const openRows = (): MemRow[] => {
   if (openCache?.root !== root)
     openCache = { root, rows: readFaelLog(root, undefined, true).rows };
   return openCache.rows;
@@ -161,11 +161,18 @@ export const chunkLabel = (item: string): string | null =>
 // only by accident.
 export const firstSectionItems = (
   file: string,
-): { checked: string[]; unchecked: string[]; unknown: string[] } => {
-  const out: { checked: string[]; unchecked: string[]; unknown: string[] } = {
-    checked: [],
-    unchecked: [],
-    unknown: [],
+): {
+  checked: string[];
+  unchecked: string[];
+  unknown: string[];
+  /** checked + unchecked in file order — what the parallel picker reads */
+  ordered: string[];
+} => {
+  const out = {
+    checked: [] as string[],
+    unchecked: [] as string[],
+    unknown: [] as string[],
+    ordered: [] as string[],
   };
   try {
     const text = readFileSync(file, "utf8");
@@ -176,9 +183,13 @@ export const firstSectionItems = (
     const next = rest.slice(3).search(/^##\s+/m);
     const block = next < 0 ? rest : rest.slice(0, next + 3);
     for (const line of block.split("\n")) {
-      if (/^\s*[-*]\s+\[\s\]\s+.+$/.test(line)) out.unchecked.push(line);
-      else if (TICK_RE.test(line)) out.checked.push(line);
-      else if (/^\s*[-*]\s+\[[^\]]\]\s/.test(line)) out.unknown.push(line);
+      if (/^\s*[-*]\s+\[\s\]\s+.+$/.test(line)) {
+        out.unchecked.push(line);
+        out.ordered.push(line);
+      } else if (TICK_RE.test(line)) {
+        out.checked.push(line);
+        out.ordered.push(line);
+      } else if (/^\s*[-*]\s+\[[^\]]\]\s/.test(line)) out.unknown.push(line);
     }
   } catch {
     // unreadable file — nothing ticked

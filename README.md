@@ -28,7 +28,7 @@ the loop: fapony says *what's next*, fael says *what the last session learned*.
 | Writes | plan files, only when told (`plan sweep --apply`) | its log under `.fael/` in your repo |
 | Install | `npm i -g @zecalis/fapony && fapony install` | `npm i -g @zecalis/fael && fael install` |
 
-One session = one PR of up to 3 chunks (`fapony plan PLAN-x.md` prints the exact rule):
+One session = one PR of up to 3 chunks; a chunk marked `(after …)` can run in a second worktree at once, claimed with `(wip <branch>)` (`fapony plan PLAN-x.md` prints the exact rule):
 
 ```mermaid
 flowchart TD
