@@ -47,9 +47,10 @@ import {
   planDir,
   specDir,
 } from "../core/config.js";
-import { readFaelLog, recentDecisions } from "../fael.js";
+import { readFaelLog } from "../fael.js";
 import { extractExports } from "../map.js";
 import { findMentions } from "../plan/resolve.js";
+import { firstSectionItems } from "../plan/sweep.js";
 import { capLines, execGit, SIG_MAX } from "./primitives.js";
 
 // One chunk = one module's signatures — past ~40 lines a module is its own
@@ -60,9 +61,6 @@ const MAX_SPEC_LINES = 200;
 // Above this many files in scope the caps start eating output silently —
 // warn so the shortness is explained. (guess — first cutoff that felt right)
 const SCOPE_WARN_FILES = 300;
-// Shipped plans/specs that already touched this scope. Capped low on purpose:
-// this is a "go read that first" pointer, not a bibliography.
-const MAX_PRIOR_ART = 5;
 // Mem-row text budget in the Known traps block.
 const MEM_TEXT_MAX = 120;
 // Chunk 4 (PLAN-seed-and-surface): the PLAN names what is already in scope —
@@ -119,25 +117,15 @@ function renderPriorArt(cwd: string, config: Config, roots: string[]): string {
       label: dir.split("/").pop() ?? dir,
     })),
     keys,
-  ).map((h) => ({
-    shipped: h.shipped,
-    line: `- ✅ Already decided: [${h.name}](../${h.label}/${h.name}) — ${h.title}${h.shipped ? ` (shipped ${h.shipped})` : ""} \`(fapony plan-seed)\``,
-  }));
-  if (hits.length === 0) return placeholder;
-  // Newest decision first — alphabetical order cuts by filename, which is the
-  // one thing that says nothing about whether the decision still binds.
-  // Undated (specs, unshipped) sort last rather than disappearing.
-  hits.sort((a, b) =>
-    a.shipped < b.shipped ? 1 : a.shipped > b.shipped ? -1 : 0,
   );
-  const shown = hits.slice(0, MAX_PRIOR_ART).map((h) => h.line);
-  if (hits.length > MAX_PRIOR_ART) {
-    shown.push(
-      `- … +${hits.length - MAX_PRIOR_ART} more touching the same scope`,
-    );
-  }
-  shown.push(placeholder);
-  return shown.join("\n");
+  if (hits.length === 0) return placeholder;
+  // One count line, not a list: a dir mention is a loose join — a vela seed
+  // kept 1 of 5 listed plans. The command lists them for whoever wants them.
+  const newest = hits.reduce((a, b) => (b.shipped > a.shipped ? b : a));
+  return [
+    `- ${hits.length} shipped plan/spec(s) mention ${keys.join(", ")} — newest ${newest.name}${newest.shipped ? ` (shipped ${newest.shipped})` : ""} · list: \`fapony plan --files ${keys.join(",")}\` \`(fapony plan-seed)\``,
+    placeholder,
+  ].join("\n");
 }
 
 // Chunk 5 (PLAN-seed-and-surface): stdout ends with the plans that already
@@ -174,7 +162,65 @@ function listExistingPlans(
   return capLines(items, MAX_PLAN_LIST, "plans");
 }
 
-// --- Context (fapony): mem decisions + existing in scope ---
+// The other duplicate the plan list can't show: an open chunk of an active
+// plan already doing this work (PLAN-vela-checks k6 checked `party.verified_*`
+// while a second plan designed the same columns; PLAN-fael-file-hash chunk 4
+// touched push.rs). Both were found by hand-grep — this is that grep: the
+// unticked TL;DR lines of every other plan, against each scope file's path,
+// basename and stem.
+// ponytail: stem match is a word-boundary regex — a generic stem ("store",
+// "config") can false-hit; drop to basename-only if that shows up.
+const GENERIC_STEMS = new Set([
+  "index",
+  "mod",
+  "main",
+  "lib",
+  "types",
+  "utils",
+]);
+const MAX_OVERLAPS = 5;
+
+function openChunkOverlaps(
+  cwd: string,
+  roots: string[],
+  exclude: string,
+): string[] {
+  const names = new Set<string>();
+  for (const r of roots)
+    for (const f of scopeSourceFiles(r)) {
+      const base = basename(f);
+      const stem = base.slice(0, base.lastIndexOf("."));
+      names.add(relative(cwd, f)).add(base);
+      if (!GENERIC_STEMS.has(stem)) names.add(stem);
+    }
+  if (names.size === 0) return [];
+  const esc = (n: string) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const res = [...names].map((n) => ({
+    n,
+    re: new RegExp(`(?<![\\w/-])${esc(n)}(?![\\w-])`),
+  }));
+  const dir = join(cwd, planDir());
+  let plans: string[];
+  try {
+    plans = readdirSync(dir).filter((n) => n.endsWith(".md") && n !== exclude);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const p of plans.sort())
+    for (const chunk of firstSectionItems(join(dir, p)).unchecked) {
+      const all = res.filter((r) => r.re.test(chunk)).map((r) => r.n);
+      // `resolve.ts` already says `resolve` — keep the longest name per hit
+      const hit = all.filter((h) => !all.some((o) => o !== h && o.includes(h)));
+      if (hit.length === 0) continue;
+      out.push(
+        `- ${p} mentions ${hit.join(", ")}: ${chunk.replace(/^\s*[-*]\s+\[\s\]\s+/, "").slice(0, 100)}`,
+      );
+    }
+  return capLines(out, MAX_OVERLAPS, "open chunks");
+}
+
+// --- Context (fapony): known traps + existing in scope ---
 //
 // No ledger-ranking line here (PLAN-seed-and-surface chunk 6): the ledger is
 // frozen and Positioning rule 2 forbids cross-model ranking claims, so a
@@ -219,42 +265,22 @@ function renderExistingInScope(
   return capLines(lines, cap, "files in scope (narrow with --scope <path>)");
 }
 
-function renderContextFapony(worktree: string): string {
-  const lines: string[] = [];
-  const decisions = recentDecisions(
-    readFaelLog(worktree, undefined, true).rows,
-    3,
-  );
-  lines.push(
-    decisions.length > 0
-      ? `- Decisions on record (mem): ${decisions
-          .map(
-            (d) =>
-              `"${d.text.length > 140 ? `${d.text.slice(0, 139)}…` : d.text}"`,
-          )
-          .join(" · ")}`
-      : "- Decisions on record (mem): _(none — no fael log or empty)_",
-  );
-  return lines.join("\n");
-}
-
 // --- PLAN barrel ---
 
 function planTemplate(
   name: string,
   priorArt: string,
-  contextFapony: string,
+  traps: string[],
   existingScope: string[],
   specLink: string | null,
 ): string {
   return `---
 kind: unit
-status: active
 ---
 
 # PLAN-${name} — (agent fills in a title)
 
-> **Status:** 🚧 in-progress · **Created:** (agent fills in the date)
+> **Status:** not started · **Created:** (agent fills in the date)
 
 ## TL;DR
 - **What:** (agent fills in) · **Why:** (agent fills in) · **Done when:** (agent fills in)
@@ -263,8 +289,7 @@ status: active
   - [ ] chunk 1 — (agent fills in)
 
 ## Context (fapony)
-${contextFapony}
-### Existing in scope
+${traps.length > 0 ? `${traps.join("\n")}\n` : ""}### Existing in scope
 ${existingScope.join("\n")}
 
 ## 1. Goal (why)
@@ -288,6 +313,8 @@ _(agent fills in)_
 1. _(agent fills in — each step must be verifiable)_
 
 - [ ] handoff: the mem note is the handoff — this box only opts the plan into the Stop-hook check
+
+**Handoff (fael):** anchor \`plan:${name.toLowerCase()}\` — key \`plan:${name.toLowerCase()}:handoff\`; \`fapony plan PLAN-${name}.md\` prints the rest.
 
 ## 7. Examples
 ${
@@ -496,7 +523,6 @@ function specTemplate(
   name: string,
   chunks: Chunk[],
   scopeEcho: string | null,
-  traps: string[],
 ): string {
   const index = chunks.map((c) => `- [${c.title}](#${c.slug})`).join("\n");
   // The index is one string with a newline per chunk; budgeting it as one line
@@ -525,10 +551,6 @@ function specTemplate(
     "## (agent fills in — wireframes / edge cases / API shapes the plan references)",
   ];
   const bodyLines = [
-    // Known traps sit after the index, before the first chunk body — budgeted
-    // with the bodies so the whole-SPEC cap still cuts from the tail and the
-    // count line above survives (a silent section would teach skipping it).
-    ...(traps.length > 0 ? [...traps, ""] : []),
     ...chunks.flatMap((c) => [
       `## <a id="${c.slug}"></a>${c.title}`,
       "",
@@ -620,7 +642,7 @@ export function renderKnownTraps(
     );
     const lacked = hits.filter((h) => h.viaText).length;
     const lines = [
-      "## Known traps (fael)",
+      "### Known traps (fael)",
       "",
       `- ${hits.length} relevant row(s) on this scope (${lacked} lacked files[]${lacked > 0 ? " — matched via text" : ""})`,
     ];
@@ -738,8 +760,10 @@ export function cmdPlanSeed(args: string[]): void {
   }
 
   const priorArt = renderPriorArt(cwd, config, roots);
-  const contextFapony = renderContextFapony(worktree);
   const scoped = requested.length > 0;
+  // Known traps live in the PLAN: the SPEC is the signature dump nobody
+  // re-reads, and the one useful row of a vela seed sat there unseen.
+  const traps = renderKnownTraps(worktree, cwd, roots, scoped);
   // First pass at the block cap — the total-cap check below may shrink it.
   let existingScope = renderExistingInScope(
     roots,
@@ -749,7 +773,6 @@ export function cmdPlanSeed(args: string[]): void {
   );
 
   let specLink: string | null = null;
-  let traps = { lines: [] as string[], matched: 0, lacked: 0 };
   if (withSpec) {
     const specDirAbs = join(cwd, specDir());
     const specPath = join(specDirAbs, `SPEC-${name}.md`);
@@ -759,7 +782,6 @@ export function cmdPlanSeed(args: string[]): void {
       );
       process.exit(1);
     }
-    traps = renderKnownTraps(worktree, cwd, roots, scoped);
     const chunks = buildChunks(roots, cwd);
     mkdirSync(specDirAbs, { recursive: true });
     writeFileSync(
@@ -770,7 +792,6 @@ export function cmdPlanSeed(args: string[]): void {
         requested.length > 0
           ? roots.map((r) => relative(cwd, r) || ".").join(", ")
           : null,
-        traps.lines,
       ),
     );
     specLink = `../${specDir().split("/").pop()}/SPEC-${name}.md`;
@@ -778,7 +799,7 @@ export function cmdPlanSeed(args: string[]): void {
 
   mkdirSync(planDirAbs, { recursive: true });
   const buildPlan = (existing: string[]): string =>
-    planTemplate(name, priorArt, contextFapony, existing, specLink);
+    planTemplate(name, priorArt, traps.lines, existing, specLink);
   let planBody = buildPlan(existingScope);
   // The ≤ ~60 contract predates the §4 block — shrink the block (never the
   // judgment sections) until the file fits. Each item is one line, so cutting
@@ -803,4 +824,9 @@ export function cmdPlanSeed(args: string[]): void {
   console.log("Existing plans:");
   for (const l of listExistingPlans(cwd, config, `PLAN-${name}.md`))
     console.log(l);
+  const overlaps = openChunkOverlaps(cwd, roots, `PLAN-${name}.md`);
+  if (overlaps.length > 0) {
+    console.log("Open chunks of other plans already touching this scope:");
+    for (const l of overlaps) console.log(l);
+  }
 }

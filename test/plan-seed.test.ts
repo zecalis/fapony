@@ -64,7 +64,8 @@ test("testPlanSeedWritesPlan", () => {
         "Context (fapony) is above the sections, not buried at the end",
       );
       // frontmatter (read by people since plan_list was removed)
-      assert.match(body, /^---\nkind: unit\nstatus: active\n---/);
+      // omit = not started (templates/PLAN.md) — a fresh seed is not active yet
+      assert.match(body, /^---\nkind: unit\n---/);
     });
   });
   console.log("  ✓ plan-seed writes PLAN with agent slots + ledger context");
@@ -167,10 +168,10 @@ test("testPlanSeedScopeFilters", () => {
       assert.ok(plan.includes("PLAN-scoped"), "--scope value is not the name");
       // §8 points at the shipped plan that already decided something here —
       // and never at the one that didn't (that list would match everything)
+      // one count line, not a list — a dir mention is a loose join
       assert.match(
         plan,
-        // title keeps only what the filename doesn't already say
-        /Already decided: \[PLAN-formatters\.md\]\(\.\.\/done\/PLAN-formatters\.md\) — money formatting \(shipped 2026-01-02\)/,
+        /- 1 shipped plan\/spec\(s\) mention apps\/vela\/src\/components — newest PLAN-formatters\.md \(shipped 2026-01-02\) · list: `fapony plan --files apps\/vela\/src\/components`/,
       );
       assert.ok(!plan.includes("PLAN-elsewhere"), "§8 stays inside the scope");
 
@@ -182,7 +183,7 @@ test("testPlanSeedScopeFilters", () => {
         "utf-8",
       );
       assert.ok(
-        !wide.includes("Already decided"),
+        !wide.includes("shipped plan/spec(s) mention"),
         "§8 prior art needs a --scope to join on",
       );
     });
@@ -349,6 +350,12 @@ test("testPlanSeedStepSixPointsAtTheRuleInsteadOfCopyingIt", () => {
       assert.ok(!s6.includes("fael add note"), "no closing recipe in §6");
       assert.ok(!s6.includes(".fapony/plan/PLAN-"), "no plan path in §6");
       assert.ok(s6.includes("- [ ] handoff:"), "Stop-hook opt-in box stays");
+      // the anchor is the part agents got wrong (vela:registry:handoff) and
+      // the one part that never drifts — lowercase, like planKeyName
+      assert.ok(
+        s6.includes("anchor `plan:bar` — key `plan:bar:handoff`"),
+        "§6 seeds the handoff anchor",
+      );
     });
   });
   console.log(
@@ -596,4 +603,42 @@ test("testPlanSeedScopeCommaList", () => {
     rmSync(dir, { recursive: true, force: true });
   }
   console.log("  ✓ plan-seed --scope accepts comma lists (space trimmed)");
+});
+
+// Two plans designing the same columns nearly shipped: PLAN-vela-checks k6
+// already checked `party.verified_*`. The seed greps the other plans' open
+// chunks for scope paths/basenames/stems — closed chunks are history.
+test("testPlanSeedFlagsOpenChunksTouchingScope", () => {
+  withFixture((dir) => {
+    writeFileSync(join(dir, "src", "party.ts"), "export const party = 1;\n");
+    writeFileSync(join(dir, "src", "index.ts"), "export {};\n");
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    writeFileSync(
+      join(dir, ".fapony", "plan", "PLAN-vela-checks.md"),
+      [
+        "# PLAN-vela-checks",
+        "",
+        "## TL;DR",
+        "- [x] k5 — calc.ts rounding (closed, never reported)",
+        "- [ ] k6 — check counterparty `party.verified_*`",
+        "- [ ] k7 — rebuild the search index", // generic stem: no hit
+        "",
+        "## 6. Steps",
+        "- [ ] calc.ts again (not the TL;DR: not a chunk)",
+      ].join("\n"),
+    );
+    withCwd(dir, () => {
+      const out = captureLogs(() =>
+        cmdPlanSeed(["registry", "--scope", "src"]),
+      );
+      assert.match(
+        out,
+        /Open chunks of other plans already touching this scope:\n- PLAN-vela-checks\.md mentions party: k6 — check counterparty/,
+      );
+      assert.ok(!out.includes("k5"), "ticked chunks are not reported");
+      assert.ok(!out.includes("k7"), "generic stem `index` never matches");
+      assert.ok(!out.includes("again"), "only TL;DR chunks count");
+    });
+  });
+  console.log("  ✓ plan-seed flags open chunks of other plans on the scope");
 });

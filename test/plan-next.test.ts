@@ -575,3 +575,28 @@ test("testPlanBriefFindsASpecThatMovedToDone", () => {
     assert.match(out, /^§1 → SPEC-x\.md:1-2 One$/m);
   });
 });
+
+// A criterion still marked (guess) when its chunk starts gets measured against
+// itself — the rule lived only in the plan-with-pony skill.
+test("testPlanWarnsOnOpenGuesses", () => {
+  withTempRepo((dir) => {
+    const p = join(dir, ".fapony", "plan");
+    mkdirSync(p, { recursive: true });
+    writeFileSync(
+      join(p, "PLAN-g.md"),
+      `${plan("G", "", "- [x] chunk 1 — x\n- [ ] chunk 4 — measure")}\n## 3. Done criteria\n- hit rate ≥ 40% (guess)\n`,
+    );
+    assert.match(
+      run(dir, ["PLAN-g.md"]),
+      /⚠ 1 \(guess\) mark\(s\) still in the plan \(line 12\)/,
+    );
+    writeFileSync(
+      join(p, "PLAN-h.md"),
+      plan("H", "", "- [x] chunk 1 — x\n- [ ] chunk 2 — y"),
+    );
+    assert.ok(
+      !run(dir, ["PLAN-h.md"]).includes("(guess)"),
+      "no guess, no warn",
+    );
+  });
+});

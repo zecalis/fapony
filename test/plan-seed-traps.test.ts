@@ -65,7 +65,7 @@ test("testKnownTrapsInjectsRowsMatchingScope", () => {
     assert.equal(result.matched, 3, "bug + fallback bug + decision = 3");
     assert.equal(result.lacked, 1, "t3 has empty files[]");
     const spec = result.lines.join("\n");
-    assert.match(spec, /## Known traps \(fael\)/);
+    assert.match(spec, /### Known traps \(fael\)/);
     assert.match(
       spec,
       /3 relevant row\(s\) on this scope \(1 lacked files\[\] — matched via text\)/,
@@ -166,9 +166,9 @@ test("testKnownTrapsFallbackOnlyForEmptyFiles", () => {
   );
 });
 
-// --- e2e: SPEC includes traps section ---
+// --- e2e: traps land in the PLAN, never the SPEC ---
 
-test("testPlanSeedSpecInjectsTraps", () => {
+test("testPlanSeedInjectsTrapsIntoPlan", () => {
   withFaelRepo((dir) => {
     writeFixture(dir);
     writeMemRow(dir, "t1", "bug", "fix crash in add()", ["src/calc.ts"]);
@@ -185,28 +185,35 @@ test("testPlanSeedSpecInjectsTraps", () => {
         /Known traps: 2 row\(s\) injected \(0 lacked files\[\]\)/,
         "stdout reports trap count",
       );
+      const plan = readFileSync(
+        join(dir, ".fapony", "plan", "PLAN-traps-test.md"),
+        "utf-8",
+      );
+      const ctx = plan.indexOf("## Context (fapony)");
+      const traps = plan.indexOf("### Known traps (fael)");
+      assert.ok(ctx >= 0 && ctx < traps, "traps sit inside Context (fapony)");
+      assert.ok(
+        traps < plan.indexOf("### Existing in scope"),
+        "traps before the export list",
+      );
+      assert.match(plan, /2 relevant row\(s\) on this scope/);
+      assert.ok(
+        !plan.includes("Decisions on record"),
+        "no unscoped recent-decision line",
+      );
       const spec = readFileSync(
         join(dir, ".fapony", "spec", "SPEC-traps-test.md"),
         "utf-8",
       );
-      assert.match(spec, /## Known traps \(fael\)/);
-      assert.match(spec, /2 relevant row\(s\) on this scope/);
-      // traps appear after "## Chunk index" and before first chunk body
-      const idx = spec.indexOf("## Chunk index");
-      const traps = spec.indexOf("## Known traps");
-      const firstChunk = spec.indexOf("## <a id=");
-      assert.ok(idx < traps, "traps after chunk index");
-      assert.ok(traps < firstChunk, "traps before first chunk body");
+      assert.ok(!spec.includes("Known traps"), "SPEC stays signatures only");
     } finally {
       process.chdir(orig);
     }
   });
-  console.log(
-    "  ✓ plan-seed --spec injects Known traps between index and chunks",
-  );
+  console.log("  ✓ plan-seed puts Known traps in the PLAN Context");
 });
 
-test("testPlanSeedSpecNoTrapsWhenNoMatch", () => {
+test("testPlanSeedNoTrapsWhenNoMatch", () => {
   withFaelRepo((dir) => {
     writeFixture(dir);
     mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
@@ -214,47 +221,20 @@ test("testPlanSeedSpecNoTrapsWhenNoMatch", () => {
     process.chdir(dir);
     try {
       const out = captureLogs(() =>
-        cmdPlanSeed(["empty-traps", "--spec", "--scope", "src"]),
+        cmdPlanSeed(["empty-traps", "--scope", "src"]),
       );
       assert.ok(
         !out.includes("Known traps"),
         "no traps line in stdout when 0 match",
       );
-      const spec = readFileSync(
-        join(dir, ".fapony", "spec", "SPEC-empty-traps.md"),
-        "utf-8",
-      );
-      assert.ok(
-        !spec.includes("## Known traps"),
-        "no traps section in SPEC when 0 match",
-      );
-    } finally {
-      process.chdir(orig);
-    }
-  });
-  console.log("  ✓ plan-seed --spec: no traps section when 0 match");
-});
-
-test("testPlanSeedSpecNoTrapsWithoutFlag", () => {
-  withFaelRepo((dir) => {
-    writeFixture(dir);
-    writeMemRow(dir, "t1", "bug", "fix crash", ["src/calc.ts"]);
-    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
-    const orig = process.cwd();
-    process.chdir(dir);
-    try {
-      cmdPlanSeed(["no-spec-traps"]);
       const plan = readFileSync(
-        join(dir, ".fapony", "plan", "PLAN-no-spec-traps.md"),
+        join(dir, ".fapony", "plan", "PLAN-empty-traps.md"),
         "utf-8",
       );
-      assert.ok(
-        !plan.includes("Known traps"),
-        "PLAN without --spec must not have traps section",
-      );
+      assert.ok(!plan.includes("Known traps"), "no traps block when 0 match");
     } finally {
       process.chdir(orig);
     }
   });
-  console.log("  ✓ plan-seed without --spec: no traps in PLAN");
+  console.log("  ✓ plan-seed: no traps block when 0 match");
 });

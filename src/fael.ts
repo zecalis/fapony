@@ -119,21 +119,3 @@ export function readFaelLog(
     return { rows: [], ok: false, skipped: 0 };
   }
 }
-
-/** Newest decisions, keyword hits first when any match. */
-export function recentDecisions(
-  rows: MemRow[],
-  limit: number,
-  keywords: string[] = [],
-): MemRow[] {
-  const decisions = rows.filter((r) => r.kind === "decision");
-  const kws = keywords.map((k) => k.toLowerCase()).filter(Boolean);
-  if (kws.length > 0) {
-    const hits = decisions.filter((r) => {
-      const hay = `${r.text}\n${r.spec ?? ""}`.toLowerCase();
-      return kws.some((k) => hay.includes(k));
-    });
-    if (hits.length > 0) return hits.slice(0, limit);
-  }
-  return decisions.slice(0, limit);
-}
