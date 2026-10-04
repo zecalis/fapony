@@ -69,15 +69,19 @@ export const openRowsFor = (planPath: string): MemRow[] => {
   );
 };
 
-// Closing-ceremony handoffs — open `plan:<name>:*` rows by key, any kind.
-// Handoff notes (`fael add note --key plan:<name>:handoff`, legacy
-// `plan:<name>:chunk-N`) are the plan's
-// unfinished work. Open/closed/superseded is fael's call, never re-derived here.
+// Closing-ceremony handoffs — open `plan:<name>:handoff` / legacy
+// `plan:<name>:chunk-N` rows by key, any kind: the plan's unfinished work.
+// Any other key under the anchor (`plan:x:pr-114`) is history that travels
+// with the plan — matching the whole `plan:<name>:` prefix blocked the move.
+// Open/closed/superseded is fael's call, never re-derived here.
 export const openHandoffRowsFor = (planPath: string): MemRow[] => {
   const name = planKeyName(planPath);
   if (!name) return [];
-  const prefix = `plan:${name}:`;
-  return openRows().filter((r) => r.key?.startsWith(prefix));
+  const re = new RegExp(
+    `^plan:${escapeRe(name)}:(handoff|chunk-[a-z0-9]+)$`,
+    "i",
+  );
+  return openRows().filter((r) => re.test(r.key ?? ""));
 };
 
 const SHIPPED = /^>\s*✅/m;

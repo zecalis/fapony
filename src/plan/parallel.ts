@@ -121,7 +121,7 @@ export const misfiledHandoffs = (rows: MemRow[], name: string): MemRow[] =>
       !r.key.toLowerCase().startsWith(`plan:${name}:`),
   );
 
-/** Open handoff-shaped note keys that name no plan in plan/ or done/. */
+/** Open handoff-shaped note keys that name no plan in plan/, done/ or parked/. */
 export const orphanHandoffKeys = (
   rows: MemRow[],
   names: string[],
