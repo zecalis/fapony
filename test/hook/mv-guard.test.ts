@@ -126,4 +126,13 @@ test("testMvGuardDeniesParkAndUnparkByHand", () => {
     null,
     "a rename inside plan/ moves no links",
   );
+  assert.equal(
+    mvGuardDecision("mv .fapony/parked/PLAN-x.md ~/archive/plan/"),
+    null,
+    "a plan/ outside .fapony/ is the user's own dir",
+  );
+  assert.match(
+    mvGuardDecision("mv .fapony/parked/PLAN-x.md .fapony/done") ?? "",
+    /plan sweep --apply/,
+  );
 });

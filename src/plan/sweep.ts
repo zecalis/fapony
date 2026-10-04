@@ -26,6 +26,7 @@ import {
   parkedDir,
   planBase,
   planDir,
+  planDirsText,
   rel,
   root,
   writeAtomic,
@@ -690,6 +691,8 @@ export const relocatePlan = (src: string, toDir: string): string => {
   const ownLinks = rewriteMovedFileLinks(dst, dirname(src), toDir);
   let inbound = 0;
   let inboundFiles = 0;
+  let plainTextTotal = 0;
+  const plainTextFiles: string[] = [];
   for (const f of mdFiles(planBase)) {
     if (f === dst) continue;
     const n = rewriteMarkdownLinks(f, src, dst);
@@ -697,22 +700,17 @@ export const relocatePlan = (src: string, toDir: string): string => {
       inbound += n;
       inboundFiles++;
     }
+    const p = countPlainTextMentions(f, name);
+    if (p) {
+      plainTextTotal += p;
+      plainTextFiles.push(f.replace(`${planBase}/`, ""));
+    }
   }
   console.log(`moved ${rel(src)} → ${rel(dst)}`);
   console.log(`links rewritten inside the file: ${ownLinks}`);
   console.log(
     `inbound links rewritten: ${inbound} in ${inboundFiles} file(s) (scanned ${rel(planBase)}/**)`,
   );
-  let plainTextTotal = 0;
-  const plainTextFiles: string[] = [];
-  for (const f of mdFiles(planBase)) {
-    if (f === dst) continue;
-    const n = countPlainTextMentions(f, name);
-    if (n) {
-      plainTextTotal += n;
-      plainTextFiles.push(f.replace(`${planBase}/`, ""));
-    }
-  }
   if (plainTextTotal > 0)
     console.log(
       `⚠ ${plainTextTotal} plain-text mention(s) in ${plainTextFiles.length} file(s) under ${rel(planBase)}/ — grep and update the paths yourself:\n${plainTextFiles.join("\n")}`,
@@ -801,7 +799,7 @@ export const cmdPlanSweep = (a: string[]) => {
     console.error(
       r.candidates.length
         ? `${target} matches ${r.candidates.length} plans — name one:\n${r.candidates.map((c) => `  ${c}`).join("\n")}`
-        : `${target} not found (looked in ${rel(dir)}/, ${rel(doneDir)}/ and repo root)`,
+        : `${target} not found (looked in ${planDirsText()} and repo root)`,
     );
     process.exit(1);
   }
@@ -1224,7 +1222,7 @@ export const cmdPlanCheck = (a: string[]) => {
   }
 
   // 4) Ticked-chunk sha check — a ticked chunk that cites a commit must cite
-  //    one git finds on this HEAD. Scans plan/ AND done/: done/ files are the
+  //    one git finds on this HEAD. Scans plan/, parked/ AND done/: done/ files are the
   //    shipped record, and the known-stale shas all live there — active-only
   //    would see zero. No sha = no check (chunks that close with "defer" have
   //    no commit); the summary line reports the ratio instead of flagging.
@@ -1232,7 +1230,7 @@ export const cmdPlanCheck = (a: string[]) => {
   let citing = 0;
   let verified = 0;
   const shaFiles = [
-    ...new Set([...active, ...(existsSync(doneDir) ? mdFiles(doneDir) : [])]),
+    ...new Set([...active, ...mdFiles(doneDir), ...mdFiles(parkedDir)]),
   ];
   for (const f of shaFiles) {
     const relPath = relative(planBase, f);

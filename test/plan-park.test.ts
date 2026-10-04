@@ -2,7 +2,13 @@ import { test } from "bun:test";
 // test/plan-park.test.ts — `fapony plan park|unpark` (src/plan/park.ts): a plan
 // set aside leaves plan/ for parked/ with every link still true, its spec stays.
 import assert from "node:assert";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { cmdPlanNext } from "../src/plan/next.js";
 import { cmdPlanPark } from "../src/plan/park.js";
@@ -82,10 +88,9 @@ test("testParkAndUnparkKeepEveryLinkTrue", () => {
     assert.match(all, /## parked \(1\) — PLAN-b\.md/);
     assert.ok(!all.includes("name no plan"), "parked plan's key is known");
     assert.ok(!all.includes("chunk 1 — b"), "a parked plan offers no chunk");
-    assert.match(
-      captureLogs(() => cmdPlanNext(["PLAN-b.md"])),
-      /⚠ parked — set aside/,
-    );
+    const one = captureLogs(() => cmdPlanNext(["PLAN-b.md"]));
+    assert.match(one, /⚠ parked \(0\/1 chunks\) — set aside/);
+    assert.ok(!one.includes("## next"), "a parked plan offers no next chunk");
     // an active plan waiting on a parked one will never unblock
     assert.match(
       collectDepIssues([join(f, "plan", "PLAN-a.md")]).join("\n"),
@@ -122,5 +127,24 @@ test("testParkRefusesAPlanOutsidePlanDir", () => {
       }
     });
     assert.match(err, /is not in \.fapony\/parked\/ .*exit 1/s);
+  });
+});
+
+test("testParkWarnsOnAClaimedChunkAndTakesASymlinkedPath", () => {
+  inRepo((dir, f) => {
+    const p = join(f, "plan", "PLAN-b.md");
+    writeFileSync(
+      p,
+      readFileSync(p, "utf8").replace(
+        "chunk 1 — b",
+        "chunk 1 — b (wip feat/x)",
+      ),
+    );
+    // the same plan dir reached through another name (a shared .fapony/)
+    symlinkSync(f, join(dir, "alias"));
+    const out = captureLogs(() => cmdPlanPark(["alias/plan/PLAN-b.md"], false));
+    assert.match(out, /⚠ 1 chunk\(s\) still claimed \(wip …\)/);
+    assert.match(out, /chunk 1 — b \(wip feat\/x\)/);
+    assert.match(out, /would move/, "a symlinked spelling is still plan/");
   });
 });

@@ -6,10 +6,11 @@
 // resume, and another plan may cite the same spec. Why it was parked is fael's
 // to keep: fapony prints the decision command, never writes it.
 
-import { basename, dirname } from "node:path";
+import { basename } from "node:path";
+import { claimedChunks } from "./parallel.js";
 import { resolvePlan } from "./resolve.js";
-import { parkedDir, planDir, rel } from "./store.js";
-import { planKeyName, relocatePlan } from "./sweep.js";
+import { isIn, parkedDir, planDir, rel } from "./store.js";
+import { firstSectionItems, planKeyName, relocatePlan } from "./sweep.js";
 
 export function cmdPlanPark(a: string[], unpark: boolean): void {
   const verb = unpark ? "unpark" : "park";
@@ -28,12 +29,20 @@ export function cmdPlanPark(a: string[], unpark: boolean): void {
     process.exit(1);
   }
   const [from, to] = unpark ? [parkedDir, planDir] : [planDir, parkedDir];
-  if (dirname(r.file) !== from) {
+  if (!isIn(r.file, from)) {
     console.error(
       `${rel(r.file)} is not in ${rel(from)}/ — only a plan in ${rel(from)}/ can be ${verb}ed`,
     );
     process.exit(1);
   }
+  // another worktree may be mid-chunk — the move would pull the file from under it
+  const claimed = unpark
+    ? []
+    : claimedChunks(firstSectionItems(r.file).ordered);
+  if (claimed.length)
+    console.log(
+      `⚠ ${claimed.length} chunk(s) still claimed (wip …) — stop that session first, or it ticks a parked plan:\n${claimed.map((l) => `  ${l.trim()}`).join("\n")}`,
+    );
   if (!a.includes("--apply")) {
     console.log(
       `${basename(r.file)}: would move ${rel(from)}/ → ${rel(to)}/ and rewrite the links to it (add --apply)`,

@@ -16,11 +16,19 @@
 // an unanchored `mv` also matched grep/echo/commit-message prose that merely
 // spelled the pattern out, denying read-only commands. Only a command that
 // actually runs `mv`/`git mv` is denied.
-// Source: a plan in plan/ or parked/. Target: a done/, parked/ or plan/ dir
-// (or a PLAN file inside one) ending the token — so a rename inside the same
-// dir passes, and `plan/done/` (legacy layout) reads as done/.
+// Source: a plan in plan/ or parked/. Target: the next token, read by
+// `targetDir` — a rename inside the same dir passes.
 const MV_PATTERN =
-  /(?:^|[;&|\n])\s*(?:git\s+)?mv\s+(?:-\S+\s+)*["']?([^"'\s]*\.fapony\/(?:[^/\s]+\/)*(plan|parked)\/PLAN-[^"'\s]+\.md)["']?\s+["']?[^"'\s]*\b(done|parked|plan)(?:\/(?:PLAN-[^"'\s]*\.md)?)?(?=["']?(?:\s|$|[;&|]))/;
+  /(?:^|[;&|\n])\s*(?:git\s+)?mv\s+(?:-\S+\s+)*["']?([^"'\s]*\.fapony\/(?:[^/\s]+\/)*(plan|parked)\/PLAN-[^"'\s]+\.md)["']?\s+["']?([^"'\s;&|]+)/;
+
+// done/ anywhere (paths.doneDir may sit outside .fapony/; `plan/done/` is the
+// legacy layout); plan/ and parked/ only under .fapony/ — ~/archive/plan/ is
+// the user's own dir, not a plan dir.
+const targetDir = (token: string): string | null => {
+  const dir = token.replace(/\/(?:PLAN-[^/]*\.md)?$/, "");
+  if (/(?:^|\/)done$/.test(dir)) return "done";
+  return /\.fapony\/(?:[^/]+\/)*(parked|plan)$/.exec(dir)?.[1] ?? null;
+};
 
 const FIX: Record<string, string> = {
   done: "fapony plan sweep",
@@ -33,8 +41,9 @@ export function mvGuardDecision(command: unknown): string | null {
   if (typeof command !== "string" || command === "") return null;
   const m = MV_PATTERN.exec(command);
   if (!m) return null;
-  const [, src, from, to] = m;
-  if (from === to) return null; // a rename inside one dir moves no links
+  const [, src, from, token] = m;
+  const to = targetDir(token);
+  if (!to || from === to) return null; // a rename inside one dir moves no links
   return (
     `fapony: raw \`git mv\` of a plan into ${to}/ skips the link rewrite — ` +
     `run \`${FIX[to]} --apply ${src}\` instead, it moves the file ` +

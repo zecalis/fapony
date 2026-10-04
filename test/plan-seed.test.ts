@@ -171,7 +171,7 @@ test("testPlanSeedScopeFilters", () => {
       // one count line, not a list — a dir mention is a loose join
       assert.match(
         plan,
-        /- 1 shipped plan\/spec\(s\) mention apps\/vela\/src\/components — newest PLAN-formatters\.md \(shipped 2026-01-02\) · list: `fapony plan --files apps\/vela\/src\/components`/,
+        /- 1 done\/parked plan\/spec\(s\) mention apps\/vela\/src\/components — newest PLAN-formatters\.md \(shipped 2026-01-02\) · list: `fapony plan --files apps\/vela\/src\/components`/,
       );
       assert.ok(!plan.includes("PLAN-elsewhere"), "§8 stays inside the scope");
 
@@ -183,7 +183,7 @@ test("testPlanSeedScopeFilters", () => {
         "utf-8",
       );
       assert.ok(
-        !wide.includes("shipped plan/spec(s) mention"),
+        !wide.includes("plan/spec(s) mention"),
         "§8 prior art needs a --scope to join on",
       );
     });

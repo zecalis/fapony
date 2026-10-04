@@ -96,6 +96,7 @@ export const CONVENTIONS_FILE = `${FAPONY_DIR}/${CONVENTIONS_FILENAME}`;
 // plan/spec live in .fapony/ — not configurable (gitignored = private).
 export const PLAN_DIR = `${FAPONY_DIR}/plan`;
 export const SPEC_DIR = `${FAPONY_DIR}/spec`;
+export const PARKED_DIR = `${FAPONY_DIR}/parked`;
 // Archive sits beside plan/, not inside it, so archiving never changes a file's
 // depth and its relative links survive the move untouched.
 export const DEFAULT_DONE_DIR = `${FAPONY_DIR}/done`;
