@@ -15,7 +15,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { doneDir, planBase, root } from "./store.js";
+import { planBase, planDirs, root } from "./store.js";
 
 // The fael anchor is lowercase `[a-z0-9._-]`; planKeyName (sweep.ts) already
 // holds that rule for PLAN names, so the slug the name is built from respects
@@ -88,14 +88,13 @@ export function cmdPlanAdopt(a: string[]): void {
   }
   // Unique name: PLAN-<slug>.md, then -2, -3… (plan-seed's refusal is on a
   // fixed name; adopt resolves its own, so the overlap check differs). done/
-  // counts as a collision too: a shipped PLAN-<slug>.md would otherwise make a
-  // same-named doc unadoptable forever, so skip past it like a live one.
+  // and parked/ count as a collision too: a shipped or parked PLAN-<slug>.md
+  // would otherwise share its plan:<name> anchor with the new one.
   const base = join(planBase, "plan");
   let name = slug;
   for (
     let n = 2;
-    existsSync(join(base, `PLAN-${name}.md`)) ||
-    existsSync(join(doneDir, `PLAN-${name}.md`));
+    planDirs().some((d) => existsSync(join(d, `PLAN-${name}.md`)));
     n++
   ) {
     name = `${slug}-${n}`;

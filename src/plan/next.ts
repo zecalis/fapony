@@ -15,7 +15,17 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { misfiledHandoffs, orphanHandoffKeys, pickChunks } from "./parallel.js";
 import { mentionsOfFiles, resolvePlan } from "./resolve.js";
-import { doneDir, planBase, planDir, rel, root } from "./store.js";
+import {
+  doneDir,
+  isIn,
+  parkedDir,
+  planBase,
+  planDir,
+  planDirs,
+  planDirsText,
+  rel,
+  root,
+} from "./store.js";
 import {
   checkTickedLine,
   chunkLabel,
@@ -223,6 +233,13 @@ function showPlan(file: string, chunk: string | null): void {
   const items = readPlanSectionItems(file);
   const { unchecked } = items;
   console.log(`# ${readPlanTitle(file) || basename(file)} — ${rel(file)}`);
+  // parked = set aside: no next chunk, no rules — nothing for a session to start
+  if (isIn(file, parkedDir)) {
+    console.log(
+      `⚠ parked (${tally(items)}) — set aside, not active; no chunk is offered. Resume: fapony plan unpark ${basename(file)} --apply`,
+    );
+    return;
+  }
   const spec = specFile(file);
   if (spec) console.log(specLine(spec));
   // `plan:x:chunk-<label>` picks that chunk as "next"; else the picker: the
@@ -392,19 +409,27 @@ function showAll(): void {
       );
   }
   // A handoff key that names no plan is a note no `fapony plan` will show.
-  const names = [planDir, doneDir].flatMap((d) =>
+  const names = planDirs().flatMap((d) =>
     existsSync(d) ? readdirSync(d).flatMap((n) => planKeyName(n) ?? []) : [],
   );
   const orphans = orphanHandoffKeys(openRows(), names);
   if (orphans.length)
     console.log(
-      `\n⚠ ${orphans.length} open handoff key(s) name no plan in ${rel(planDir)}/ or ${rel(doneDir)}/: ${orphans.slice(0, 5).join(", ")} — re-file under plan:<name>:handoff (--supersedes <id>)`,
+      `\n⚠ ${orphans.length} open handoff key(s) name no plan in ${planDirsText()}: ${orphans.slice(0, 5).join(", ")} — re-file under plan:<name>:handoff (--supersedes <id>)`,
     );
   if (shipped.size) {
     console.log(`\n## shipped but not archived into done/ (${shipped.size})`);
     for (const n of shipped) console.log(`- ${n}`);
     console.log(`(move: ${planSweepCmd} <file.md> --apply)`);
   }
+  // parked plans are set aside, not active — one line so they stay findable
+  const parked = existsSync(parkedDir)
+    ? readdirSync(parkedDir).filter((n) => n.endsWith(".md"))
+    : [];
+  if (parked.length)
+    console.log(
+      `\n## parked (${parked.length}) — ${parked.sort().join(", ")} (resume: fapony plan unpark <PLAN.md> --apply)`,
+    );
 }
 
 export function cmdPlanNext(a: string[]): void {
@@ -430,7 +455,7 @@ export function cmdPlanNext(a: string[]): void {
     console.error(
       r.candidates.length
         ? `"${arg}" matches ${r.candidates.length} plans — name one:\n${r.candidates.map((c) => `  ${c}`).join("\n")}`
-        : `no plan "${arg}" (looked in ${rel(planDir)}/, ${rel(doneDir)}/ and the repo root)`,
+        : `no plan "${arg}" (looked in ${planDirsText()} and the repo root)`,
     );
     process.exit(1);
   }

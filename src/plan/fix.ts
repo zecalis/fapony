@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, relative, resolve } from "node:path";
 
-import { doneDir, planBase, planDir, rel, root, writeAtomic } from "./store.js";
+import { planBase, planDirs, rel, root, writeAtomic } from "./store.js";
 import {
   checkTickedLine,
   defaultBranch,
@@ -140,7 +140,7 @@ const fixTicks = (files: string[]): string[] => {
 };
 
 // [text](…/PLAN-x.md) whose target is gone but PLAN-x.md exists in exactly one
-// place under .fapony/ (moved plan/ ↔ done/). Fenced/inline code is left alone.
+// place under .fapony/ (moved between plan/, parked/ and done/). Fenced/inline code is left alone.
 const fixLinks = (): string[] => {
   const where = new Map<string, string[]>();
   for (const f of mdFiles(planBase))
@@ -181,7 +181,7 @@ const fixLinks = (): string[] => {
 };
 
 export const fixPlanState = (): void => {
-  const files = [...new Set([...mdFiles(planDir), ...mdFiles(doneDir)])];
+  const files = [...new Set(planDirs().flatMap(mdFiles))];
   const done = [...fixTicks(files), ...fixLinks()];
   console.log(
     done.length

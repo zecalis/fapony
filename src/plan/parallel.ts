@@ -87,6 +87,10 @@ export function pickChunks(items: string[], branch: string | null): Picked {
   };
 }
 
+/** Open chunk lines another session has claimed with `(wip …)`. */
+export const claimedChunks = (items: string[]): string[] =>
+  items.filter((l) => /^\s*[-*]\s+\[\s\]/.test(l) && WIP_RE.test(l));
+
 // A handoff written under a key `fapony plan` never reads is lost to the next
 // session — an agent wrote `vela:registry:handoff` for plan:vela-registry.
 // Same plan, wrong spelling: strip `plan:`, `:` → `-`, compare names.

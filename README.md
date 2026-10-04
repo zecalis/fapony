@@ -157,7 +157,8 @@ Stated up front, because the gap between these two things is where most tooling 
 - **It checks conformance, not correctness** — that a claim lines up with git facts and that
   uncertainty was declared, not that the code works.
 - **Almost nothing blocks.** The one exception is the plan-mv guard on Claude Code, which denies a
-  raw `git mv` of a plan into done/ and points at `fapony plan sweep --apply`; nothing else touches a
+  raw `git mv` of a plan into done/ or parked/ (or back) and points at `fapony plan sweep|park|unpark
+  --apply`; nothing else touches a
   tool call.
 - **Model attribution is inferred, not declared** — reports label it `inferred`; read it as such.
 
@@ -242,7 +243,10 @@ dangling `blocked_by` refs; `fapony plan sweep PLAN-x.md --apply` archives a shi
 into `.fapony/done/` — same name, same depth, so every relative link inside the file survives the
 move. A spec lives in `.fapony/spec/` while a plan cites it (`spec:` frontmatter) and moves to
 `done/` with the last plan that does — `plan sweep --apply` keeps it if another active plan still
-names the file, and repoints every link. `fapony plan PLAN-x.md` prints `§N → SPEC-x.md:from-to`
+names the file, and repoints every link. A plan set aside because the situation changed — not
+shipped — goes to `.fapony/parked/` with `fapony plan park PLAN-x.md --apply` (`unpark` brings it
+back): links rewritten both ways, its spec stays in `spec/`, `fapony plan` lists it on one line and
+offers none of its chunks. `fapony plan PLAN-x.md` prints `§N → SPEC-x.md:from-to`
 for each section the next chunk cites, so a session reads those lines, not the whole spec.
 
 ## CLI

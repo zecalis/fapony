@@ -44,6 +44,7 @@ import {
   type Config,
   doneDir,
   loadConfig,
+  PARKED_DIR,
   planDir,
   specDir,
 } from "../core/config.js";
@@ -112,7 +113,9 @@ function renderPriorArt(cwd: string, config: Config, roots: string[]): string {
   if (keys.length === 0) return placeholder;
 
   const hits = findMentions(
-    [doneDir(config), specDir()].map((dir) => ({
+    // parked/ too: a plan set aside over the same files is the prior art a
+    // new seed most needs to see
+    [doneDir(config), PARKED_DIR, specDir()].map((dir) => ({
       abs: join(cwd, dir),
       label: dir.split("/").pop() ?? dir,
     })),
@@ -123,7 +126,7 @@ function renderPriorArt(cwd: string, config: Config, roots: string[]): string {
   // kept 1 of 5 listed plans. The command lists them for whoever wants them.
   const newest = hits.reduce((a, b) => (b.shipped > a.shipped ? b : a));
   return [
-    `- ${hits.length} shipped plan/spec(s) mention ${keys.join(", ")} — newest ${newest.name}${newest.shipped ? ` (shipped ${newest.shipped})` : ""} · list: \`fapony plan --files ${keys.join(",")}\` \`(fapony plan-seed)\``,
+    `- ${hits.length} done/parked plan/spec(s) mention ${keys.join(", ")} — newest ${newest.name}${newest.shipped ? ` (shipped ${newest.shipped})` : ""} · list: \`fapony plan --files ${keys.join(",")}\` \`(fapony plan-seed)\``,
     placeholder,
   ].join("\n");
 }
@@ -143,6 +146,7 @@ function listExistingPlans(
   const items: string[] = [];
   for (const [dir, where] of [
     [planDir(), "plan"],
+    [PARKED_DIR, "parked"],
     [doneDir(config), "done"],
   ] as const) {
     let names: string[];
@@ -755,6 +759,14 @@ export function cmdPlanSeed(args: string[]): void {
   if (existsSync(planPath)) {
     console.error(
       `${planPath} already exists — not overwriting. Use a new name, e.g. PLAN-${name}-v2`,
+    );
+    process.exit(1);
+  }
+  // a parked PLAN-<name>.md owns the plan:<name> anchor — resume it instead
+  const parkedPath = join(cwd, PARKED_DIR, `PLAN-${name}.md`);
+  if (existsSync(parkedPath)) {
+    console.error(
+      `${parkedPath} is parked under this name — resume it (fapony plan unpark PLAN-${name}.md --apply) or use a new name, e.g. PLAN-${name}-v2`,
     );
     process.exit(1);
   }

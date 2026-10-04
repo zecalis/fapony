@@ -21,7 +21,16 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { type MemRow, readFaelLog } from "../fael.js";
 import { slugify } from "./adopt.js";
 import { resolvePlan } from "./resolve.js";
-import { doneDir, planBase, planDir, rel, root, writeAtomic } from "./store.js";
+import {
+  doneDir,
+  parkedDir,
+  planBase,
+  planDir,
+  planDirsText,
+  rel,
+  root,
+  writeAtomic,
+} from "./store.js";
 
 /** PLAN-<name>.md → "<name>" lowercased — the fael anchor/key form
  *  (`plan:<name>`; fael stores anchors lowercase, keys are [a-z0-9._-]). */
@@ -131,10 +140,13 @@ export const extractPlanRefs = (raw: string | null): string[] => {
   return [...new Set(raw.match(PLAN_REF_RE) ?? [])].map((p) => basename(p));
 };
 
-export const planLocation = (base: string): "plan" | "done" | null => {
+export const planLocation = (
+  base: string,
+): "plan" | "done" | "parked" | null => {
   try {
     if (existsSync(join(planDir, base))) return "plan";
     if (existsSync(join(doneDir, base))) return "done";
+    if (existsSync(join(parkedDir, base))) return "parked";
   } catch {
     // planDir/doneDir uninitialised in unit context — treat as unknown
   }
@@ -223,11 +235,15 @@ export const collectDepIssues = (active: string[]): string[] => {
       const loc = planLocation(ref);
       if (!loc) {
         issues.push(
-          `${relPath} — blocked_by points at ${ref} but no such file is in plan/ or done/\n   fix: correct the filename or keep blocked_by as a plain sentence`,
+          `${relPath} — blocked_by points at ${ref} but no such file is in plan/, done/ or parked/\n   fix: correct the filename or keep blocked_by as a plain sentence`,
         );
       } else if (loc === "done") {
         issues.push(
           `${relPath} — blocker ${ref} already shipped to done/ but this plan is still status:blocked\n   fix: clear status:blocked or tick the remaining chunk`,
+        );
+      } else if (loc === "parked") {
+        issues.push(
+          `${relPath} — blocker ${ref} is parked, so nothing will unblock this plan\n   fix: park this plan too, unpark the blocker, or drop it from blocked_by`,
         );
       }
       if (activeBases.has(ref)) {
@@ -240,7 +256,7 @@ export const collectDepIssues = (active: string[]): string[] => {
       const loc = planLocation(ref);
       if (!loc) {
         issues.push(
-          `${relPath} — blocks points at ${ref} but no such file is in plan/ or done/\n   fix: correct the filename or drop it`,
+          `${relPath} — blocks points at ${ref} but no such file is in plan/, done/ or parked/\n   fix: correct the filename or drop it`,
         );
       }
       // "F blocks G" = G waits on F → edge G -> F for cycle detection.
@@ -639,7 +655,8 @@ const archiveSpec = (plan: string): string | null => {
   const name = parsePlanFrontmatter(plan).spec;
   const src = name ? join(planBase, "spec", name) : "";
   if (!name || !existsSync(src)) return null;
-  const keeper = mdFiles(planDir).find((f) =>
+  // a parked plan may resume — its spec stays put like an active plan's
+  const keeper = [...mdFiles(planDir), ...mdFiles(parkedDir)].find((f) =>
     readFileSync(f, "utf8").includes(name),
   );
   if (keeper)
@@ -654,6 +671,52 @@ const archiveSpec = (plan: string): string | null => {
     if (f !== dst) inbound += rewriteMarkdownLinks(f, src, dst);
   warnOutside(name);
   return `moved spec ${rel(src)} → ${rel(dst)} — no active plan names it any more (inbound links rewritten: ${inbound})`;
+};
+
+// Move a plan between plan/, done/ and parked/ and keep every link to it true:
+// its own links re-relativized (the file changed directory even in the sibling
+// layout), inbound [..](..) under .fapony/ repointed — other plans, done/ and
+// specs link to each other, scanning plan/ only left links dangling
+// (mtl15q4y) — and plain-text mentions plus files outside .fapony/ reported,
+// never auto-fixed. Exits 1 when the target already exists.
+export const relocatePlan = (src: string, toDir: string): string => {
+  const name = basename(src);
+  const dst = join(toDir, name);
+  if (existsSync(dst)) {
+    console.error(`${rel(dst)} already exists`);
+    process.exit(1);
+  }
+  mkdirSync(toDir, { recursive: true });
+  moveFile(src, dst);
+  const ownLinks = rewriteMovedFileLinks(dst, dirname(src), toDir);
+  let inbound = 0;
+  let inboundFiles = 0;
+  let plainTextTotal = 0;
+  const plainTextFiles: string[] = [];
+  for (const f of mdFiles(planBase)) {
+    if (f === dst) continue;
+    const n = rewriteMarkdownLinks(f, src, dst);
+    if (n) {
+      inbound += n;
+      inboundFiles++;
+    }
+    const p = countPlainTextMentions(f, name);
+    if (p) {
+      plainTextTotal += p;
+      plainTextFiles.push(f.replace(`${planBase}/`, ""));
+    }
+  }
+  console.log(`moved ${rel(src)} → ${rel(dst)}`);
+  console.log(`links rewritten inside the file: ${ownLinks}`);
+  console.log(
+    `inbound links rewritten: ${inbound} in ${inboundFiles} file(s) (scanned ${rel(planBase)}/**)`,
+  );
+  if (plainTextTotal > 0)
+    console.log(
+      `⚠ ${plainTextTotal} plain-text mention(s) in ${plainTextFiles.length} file(s) under ${rel(planBase)}/ — grep and update the paths yourself:\n${plainTextFiles.join("\n")}`,
+    );
+  warnOutside(name);
+  return dst;
 };
 
 // Notes and decisions are the plan's history and travel with it (basename
@@ -736,13 +799,12 @@ export const cmdPlanSweep = (a: string[]) => {
     console.error(
       r.candidates.length
         ? `${target} matches ${r.candidates.length} plans — name one:\n${r.candidates.map((c) => `  ${c}`).join("\n")}`
-        : `${target} not found (looked in ${rel(dir)}/, ${rel(doneDir)}/ and repo root)`,
+        : `${target} not found (looked in ${planDirsText()} and repo root)`,
     );
     process.exit(1);
   }
   const src = r.file;
   const name = basename(src);
-  const srcDir = dirname(src);
   const fm = parsePlanFrontmatter(src);
   // superseded = closed without shipping; done/ is where closed plans live
   const superseded = fm.status === "superseded";
@@ -789,19 +851,7 @@ export const cmdPlanSweep = (a: string[]) => {
   }
   const { stale: staleHandoffs } = splitHandoffs(src);
 
-  const dst = join(doneDir, name);
-  if (existsSync(dst)) {
-    console.error(`${rel(dst)} already exists`);
-    process.exit(1);
-  }
-
-  mkdirSync(doneDir, { recursive: true });
-  moveFile(src, dst);
-
-  // own links always need re-relativizing — the file changed directory even in
-  // the sibling layout (plan/ → done/ beside it), so sibling links dangle
-  // unless rewritten (see rewriteMovedFileLinks).
-  const ownLinks = rewriteMovedFileLinks(dst, srcDir, doneDir);
+  const dst = relocatePlan(src, doneDir);
 
   // stamped after the move: a failed move must not leave plan/ stamped
   if (evidence) {
@@ -810,30 +860,11 @@ export const cmdPlanSweep = (a: string[]) => {
     console.log(`stamped ✅ shipped header (${sha}) in ${rel(dst)}`);
   }
 
-  // inbound: every .md under .fapony/ can link here — other active plans,
-  // shipped plans in done/ (they reference each other), and specs. Scanning
-  // plan/ only left done/+spec/ links dangling (mtl15q4y).
-  let inbound = 0;
-  let inboundFiles = 0;
-  for (const f of mdFiles(planBase)) {
-    if (f === dst) continue;
-    const n = rewriteMarkdownLinks(f, src, dst);
-    if (n) {
-      inbound += n;
-      inboundFiles++;
-    }
-  }
-
-  console.log(`moved ${rel(src)} → ${rel(dst)}`);
   // fapony never writes fael — hand the agent the closing commands
   for (const { row, n, ref } of staleHandoffs)
     console.log(
       `fael close ${row.id} "chunk ${n} shipped ${ref}"  # handoff ${row.key} — chunk already ticked`,
     );
-  console.log(`links rewritten inside the file: ${ownLinks}`);
-  console.log(
-    `inbound links rewritten: ${inbound} in ${inboundFiles} file(s) (scanned ${rel(planBase)}/**)`,
-  );
 
   // the ship may unblock waiting plans — the dep graph lives in frontmatter,
   // so say which active plans name this file as their blocker (or were named
@@ -856,25 +887,6 @@ export const cmdPlanSweep = (a: string[]) => {
       `🔓 ${name} shipped — ${unblocked.join(", ")} list(s) it as blocker, clear status:blocked?`,
     );
   }
-
-  // plain-text mention detection (detect-only, no auto-fix)
-  let plainTextTotal = 0;
-  const plainTextFiles: string[] = [];
-  for (const f of mdFiles(planBase)) {
-    if (f === dst) continue;
-    const n = countPlainTextMentions(f, name);
-    if (n) {
-      plainTextTotal += n;
-      plainTextFiles.push(f.replace(`${planBase}/`, ""));
-    }
-  }
-  if (plainTextTotal > 0) {
-    console.log(
-      `⚠ ${plainTextTotal} plain-text mention(s) in ${plainTextFiles.length} file(s) under ${rel(planBase)}/ — grep and update the paths yourself:\n${plainTextFiles.join("\n")}`,
-    );
-  }
-
-  warnOutside(name);
 
   const specReport = archiveSpec(dst);
   if (specReport) console.log(specReport);
@@ -1210,7 +1222,7 @@ export const cmdPlanCheck = (a: string[]) => {
   }
 
   // 4) Ticked-chunk sha check — a ticked chunk that cites a commit must cite
-  //    one git finds on this HEAD. Scans plan/ AND done/: done/ files are the
+  //    one git finds on this HEAD. Scans plan/, parked/ AND done/: done/ files are the
   //    shipped record, and the known-stale shas all live there — active-only
   //    would see zero. No sha = no check (chunks that close with "defer" have
   //    no commit); the summary line reports the ratio instead of flagging.
@@ -1218,7 +1230,7 @@ export const cmdPlanCheck = (a: string[]) => {
   let citing = 0;
   let verified = 0;
   const shaFiles = [
-    ...new Set([...active, ...(existsSync(doneDir) ? mdFiles(doneDir) : [])]),
+    ...new Set([...active, ...mdFiles(doneDir), ...mdFiles(parkedDir)]),
   ];
   for (const f of shaFiles) {
     const relPath = relative(planBase, f);
