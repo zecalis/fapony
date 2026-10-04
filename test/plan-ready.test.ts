@@ -322,7 +322,7 @@ test("testApplyPathFormRewritesInboundLinks", () => {
     );
     const r = run(dir, "sweep", ".fapony/plan/PLAN-a.md", "--apply");
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /inbound links rewritten: 1/);
+    assert.match(r.out, /links rewritten: \d+ own, 1 inbound/);
     assert.match(
       readFileSync(join(dir, ".fapony/plan/PLAN-b.md"), "utf8"),
       /\[a\]\(\.\.\/done\/PLAN-a\.md\)/,

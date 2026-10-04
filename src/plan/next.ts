@@ -27,6 +27,7 @@ import {
   root,
 } from "./store.js";
 import {
+  blockedByShort,
   checkTickedLine,
   chunkLabel,
   DROP_RE,
@@ -238,6 +239,8 @@ function showPlan(file: string, chunk: string | null): void {
     console.log(
       `⚠ parked (${tally(items)}) — set aside, not active; no chunk is offered. Resume: fapony plan unpark ${basename(file)} --apply`,
     );
+    const why = parsePlanFrontmatter(file).parkedBecause;
+    if (why) console.log(`parked_because: ${blockedByShort(why)}`);
     return;
   }
   const spec = specFile(file);
@@ -388,7 +391,9 @@ function showAll(): void {
     const fm = parsePlanFrontmatter(f);
     const tags = [
       isHighPriority(f) ? "priority:high" : "",
-      fm.status === "blocked" ? `blocked_by: ${fm.blockedByRaw ?? "?"}` : "",
+      fm.status === "blocked"
+        ? `blocked_by: ${blockedByShort(fm.blockedByRaw)}`
+        : "",
     ].filter(Boolean);
     console.log(
       `\n- ${basename(f)} — ${tally(items)}${items.unknown.length ? ` · ⚠ ${items.unknown.length} unknown checkbox(es)` : ""}${tags.length ? ` · ${tags.join(" · ")}` : ""}`,

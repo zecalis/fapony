@@ -244,8 +244,8 @@ into `.fapony/done/` — same name, same depth, so every relative link inside th
 move. A spec lives in `.fapony/spec/` while a plan cites it (`spec:` frontmatter) and moves to
 `done/` with the last plan that does — `plan sweep --apply` keeps it if another active plan still
 names the file, and repoints every link. A plan set aside because the situation changed — not
-shipped — goes to `.fapony/parked/` with `fapony plan park PLAN-x.md --apply` (`unpark` brings it
-back): links rewritten both ways, its spec stays in `spec/`, `fapony plan` lists it on one line and
+shipped — goes to `.fapony/parked/` with `fapony plan park PLAN-x.md… --apply` (`unpark` brings it
+back): links rewritten both ways, `status: blocked` dropped and `blocked_by:` kept as `parked_because:`, its spec stays in `spec/`, `fapony plan` lists it on one line and
 offers none of its chunks. `fapony plan PLAN-x.md` prints `§N → SPEC-x.md:from-to`
 for each section the next chunk cites, so a session reads those lines, not the whole spec.
 

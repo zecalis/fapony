@@ -56,6 +56,8 @@ test("testMisfiledAndOrphanHandoffKeys", () => {
     row("b", "plan:vela-registry:handoff"), // correct
     row("c", "workflow:chunk-batching"), // a topic, not a chunk key
     row("d", "plan:gone:chunk-3"), // names no plan
+    { ...row("e", "plan:handoff"), kind: "decision" }, // a record, not a handoff
+    { ...row("f", "vela:registry:chunk-2"), kind: "decision" },
   ];
   assert.deepEqual(
     misfiledHandoffs(rows, "vela-registry").map((r) => r.id),

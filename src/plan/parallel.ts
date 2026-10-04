@@ -106,16 +106,22 @@ const keyPlan = (key: string): string | null => {
     : null;
 };
 
-/** Open rows whose handoff key means plan `name` but is not spelt plan:<name>:… */
+// A handoff is a note (CLAUDE.md: `fael add note … --key plan:x:handoff`); a
+// decision keyed `plan:handoff` is a record, and "re-file it as a note" is
+// advice that cannot apply — only notes are checked for spelling.
+const isNote = (r: MemRow): boolean => r.kind === "note";
+
+/** Open notes whose handoff key means plan `name` but is not spelt plan:<name>:… */
 export const misfiledHandoffs = (rows: MemRow[], name: string): MemRow[] =>
   rows.filter(
     (r) =>
+      isNote(r) &&
       !!r.key &&
       keyPlan(r.key) === name &&
       !r.key.toLowerCase().startsWith(`plan:${name}:`),
   );
 
-/** Open handoff-shaped keys that name no plan in plan/ or done/. */
+/** Open handoff-shaped note keys that name no plan in plan/ or done/. */
 export const orphanHandoffKeys = (
   rows: MemRow[],
   names: string[],
@@ -124,6 +130,7 @@ export const orphanHandoffKeys = (
   return [
     ...new Set(
       rows
+        .filter(isNote)
         .map((r) => r.key ?? "")
         .filter((k) => {
           const n = keyPlan(k);
