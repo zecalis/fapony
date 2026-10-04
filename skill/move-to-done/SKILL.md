@@ -1,6 +1,6 @@
 ---
 name: move-to-done
-description: Move a shipped PLAN to .fapony/done/. Trigger on /move-to-done and when the user asks to archive a completed plan.
+description: Move a shipped PLAN to .fapony/done/, or park one set aside in .fapony/parked/. Trigger on /move-to-done, when the user asks to archive a completed plan, and when they say a plan is on hold / not now / parked because the situation changed.
 ---
 
 # Move to Done — archive PLAN after ship
@@ -37,6 +37,17 @@ You are about to move a PLAN that has been shipped to the archive.
    of `done/`, which is what `fapony plan` and `plan sweep` go by. Never `--apply` a blocked file;
    a blocked file with all chunks ticked is deferred doc debt — ask the user: ship it or keep
    waiting.
+
+   A plan **set aside because the situation changed** — not shipped, not replaced, no known
+   thing to wait for, may resume someday — is parked, not blocked and not superseded:
+   ```bash
+   fapony plan park <PLAN-foo.md>           # dry run: what moves
+   fapony plan park <PLAN-foo.md> --apply   # plan/ → parked/, links rewritten, spec stays
+   ```
+   Then run the `fael add decision "parked: …"` line it prints — why, and what would bring it
+   back. Don't edit `status:` for it; the folder is the state. Never park on your own reading;
+   the user says so. Resume = `fapony plan unpark <PLAN-foo.md> --apply`. Never `mv` a plan
+   between `plan/`, `parked/` and `done/` by hand — the link rewrite is the point.
 
  1c. **Check the dep graph before moving** — `fapony plan check` reads `blocked_by`/`blocks`
     and says what a human would miss: a `blocked_by` pointing at a file that is not in `plan/`
