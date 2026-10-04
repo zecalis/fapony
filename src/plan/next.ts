@@ -39,6 +39,7 @@ import {
   planKeyName,
   planSweepCmd,
   shippedNotMoved,
+  tldrWarns,
 } from "./sweep.js";
 
 const HANDOFF_LIMIT = 5;
@@ -313,6 +314,7 @@ function showPlan(file: string, chunk: string | null): void {
         `⚠ ${guesses.length} (guess) mark(s) still in the plan (line ${guesses.slice(0, 5).join(", ")}${guesses.length > 5 ? ", …" : ""}) — confirm or measure them before the chunk that depends on them`,
       );
   }
+  for (const w of tldrWarns(file)) console.log(`⚠ ${w}`);
   for (const l of items.unknown)
     console.log(
       `⚠ unknown checkbox, not counted: ${clip(l)} — use [ ], [x] or [~] (dropped)`,

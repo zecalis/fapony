@@ -177,6 +177,53 @@ export const chunkLabel = (item: string): string | null =>
   ).exec(item)?.[1] ??
   null;
 
+// The first ## section (the TL;DR), heading line included; "" when the plan
+// has none. Throws on an unreadable file — callers decide what that means.
+const firstSection = (file: string): string => {
+  const body = readFileSync(file, "utf8").replace(
+    /^---\r?\n[\s\S]*?\r?\n---/,
+    "",
+  );
+  const start = body.search(/^##\s+/m);
+  if (start < 0) return "";
+  const rest = body.slice(start);
+  const next = rest.slice(3).search(/^##\s+/m);
+  return next < 0 ? rest : rest.slice(0, next + 3);
+};
+
+// Every session reads the TL;DR, so its size is paid on every run:
+// templates/PLAN.md caps it at 15 lines; the char cap catches 15 lines that
+// each carry a paragraph. A closed chunk is one line + sha (the detail is in
+// the fael handoff); a ~~struck~~ open chunk is history the next session pays
+// to read. Warn-only — callers prefix the plan's name.
+const TLDR_MAX_LINES = 15;
+const TLDR_MAX_CHARS = 4000;
+export const tldrWarns = (file: string): string[] => {
+  let block: string;
+  try {
+    block = firstSection(file);
+  } catch {
+    return [];
+  }
+  const lines = block
+    .split("\n")
+    .slice(1)
+    .filter((l) => l.trim());
+  const chars = lines.join("\n").length;
+  const warns =
+    lines.length > TLDR_MAX_LINES || chars > TLDR_MAX_CHARS
+      ? [
+          `TL;DR is ${lines.length} lines / ${chars} chars (cap ${TLDR_MAX_LINES} lines, ${TLDR_MAX_CHARS} chars) — every session reads it\n   fix: shrink each closed chunk to one line + sha; the detail belongs in the fael handoff`,
+        ]
+      : [];
+  for (const l of firstSectionItems(file).unchecked)
+    if (l.includes("~~"))
+      warns.push(
+        `open chunk ${chunkLabel(l) ?? `"${l.trim().slice(0, 40)}…"`} carries struck-through text — drop the history, keep what is left to do`,
+      );
+  return warns;
+};
+
 // checkbox lines of the first ## section (the TL;DR) only. Whole lines, so
 // callers can read the tick. `checked` = closed: done `[x]` and dropped `[~]`
 // alike. Any other `[?]` lands in `unknown` so callers can say so: skipped
@@ -198,14 +245,7 @@ export const firstSectionItems = (
     ordered: [] as string[],
   };
   try {
-    const text = readFileSync(file, "utf8");
-    const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---/, "");
-    const start = body.search(/^##\s+/m);
-    if (start < 0) return out;
-    const rest = body.slice(start);
-    const next = rest.slice(3).search(/^##\s+/m);
-    const block = next < 0 ? rest : rest.slice(0, next + 3);
-    for (const line of block.split("\n")) {
+    for (const line of firstSection(file).split("\n")) {
       if (/^\s*[-*]\s+\[\s\]\s+.+$/.test(line)) {
         out.unchecked.push(line);
         out.ordered.push(line);
@@ -1294,6 +1334,9 @@ export const cmdPlanCheck = (a: string[]) => {
   //    Unadopted docs join them: a stray handoff in plan/ is a nudge, not a failure.
   const driftWarns = collectDriftWarns(active);
   driftWarns.push(...collectUnadoptedDocWarns(active));
+  for (const f of active)
+    for (const w of tldrWarns(f))
+      driftWarns.push(`${relative(planBase, f)} — ${w}`);
 
   // clean = one line: the counts barely move run to run, they only help read
   // a failure. Drift warns are not blocking but still worth the lines.
