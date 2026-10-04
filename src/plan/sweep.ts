@@ -208,7 +208,7 @@ export const tldrWarns = (file: string): string[] => {
   const lines = block
     .split("\n")
     .slice(1)
-    .filter((l) => l.trim());
+    .filter((l) => l.trim() && !/^-{3,}\s*$/.test(l)); // the template's --- rule is not TL;DR
   const chars = lines.join("\n").length;
   const warns =
     lines.length > TLDR_MAX_LINES || chars > TLDR_MAX_CHARS

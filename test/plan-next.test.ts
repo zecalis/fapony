@@ -643,6 +643,13 @@ test("testTldrWarnsOnSizeAndStruckOpenChunks", () => {
     writeFileSync(long, plan("Long", "", ticks.join("\n")));
     assert.match(tldrWarns(long).join("\n"), /TL;DR is 16 lines/);
 
+    const ruled = join(p, "PLAN-ruled.md"); // 15 lines + the template's --- rule
+    writeFileSync(
+      ruled,
+      plan("R", "", `${ticks.slice(0, 15).join("\n")}\n\n---\n\n## 1. Goal\ng`),
+    );
+    assert.deepStrictEqual(tldrWarns(ruled), []);
+
     const wide = join(p, "PLAN-wide.md");
     writeFileSync(wide, plan("W", "", `- [ ] chunk 1 — ${"y".repeat(4100)}`));
     assert.match(tldrWarns(wide).join("\n"), /4\d{3} chars/);
