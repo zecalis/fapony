@@ -202,7 +202,14 @@ spec: SPEC-calendar.md            # if Phase 4 produced one
 - **Progress:**
   - [ ] chunk 1 — …
   - [ ] chunk 2 — …
+  - [ ] chunk 3 — … (after 1)
 ```
+
+**Mark a chunk `(after <n>)` — or `(after —)` — only when it truly does not wait on the chunk
+before it.** No marker = waits on the previous chunk. That one fact is what lets a second worktree
+take a chunk while the first is in flight: `fapony plan` lists it under "can run alongside" and
+warns when it names a file the chunk in progress names. Don't pre-assign chunks to PRs or
+worktrees — that is judged when the work starts.
 
 Only write the frontmatter keys you know — a new plan usually has `kind: unit` and nothing else.
 `blocks` goes in whenever the conversation said "this has to come before X": frontmatter is the

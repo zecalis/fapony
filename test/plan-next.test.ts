@@ -389,7 +389,7 @@ test("testPlanBriefNextInFullLaterClippedRulesPrinted", () => {
     // rules come from the command, anchored to this plan
     assert.match(
       out,
-      /## closing\n- batching: one session = one branch = one squash-merged PR, up to 3 chunks/,
+      /## closing\n- batching: one session = one branch = one squash-merged PR, one commit per chunk · add the next chunk only while the PR stays reviewable/,
     );
     assert.match(out, /--files <f1,f2>,plan:x --key plan:x:handoff/);
     // nothing left to do → no rules to print

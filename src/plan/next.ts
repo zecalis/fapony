@@ -13,6 +13,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { misfiledHandoffs, orphanHandoffKeys, pickChunks } from "./parallel.js";
 import { mentionsOfFiles, resolvePlan } from "./resolve.js";
 import { doneDir, planBase, planDir, rel, root } from "./store.js";
 import {
@@ -21,6 +22,7 @@ import {
   DROP_RE,
   firstSectionItems,
   missingFael,
+  openRows,
   openRowsFor,
   parsePlanFrontmatter,
   planKeyName,
@@ -39,8 +41,9 @@ const SPEC_TITLE_MAX = 50;
  *  closing line across 21 active plans), so plan-seed, plan adopt and init only
  *  point here. */
 export const chunkRules = (anchor: string): string[] => [
-  "batching: one session = one branch = one squash-merged PR, up to 3 chunks of this plan, one commit per chunk · a chunk gets its own PR when it changes a DB schema/migration or persisted format, touches auth/permissions/security or money logic, changes a public API/CLI contract, or needs a design review · close each chunk fully (tick + handoff note + commit) before the next; stop at anything that needs a human decision · a chunk that must build on an unmerged branch is stacked (PR base = that branch; once it merges: `git rebase --onto origin/main <lower> <upper>`)",
-  `closing a step: tick TL;DR with sha — no commit (a measurement) cites \`(fael:<decision id>)\` instead, a dropped chunk is \`[~]\` + the decision saying why · \`git commit\` files only · \`fael add note "<what the next chunk must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note; a chunk run in parallel with another open chunk of this plan, in another worktree, writes \`--key ${anchor}:chunk-<n>\` instead, <n> digits only) · after \`gh pr create\`, append \`(#N)\` to that tick (a squash rewrites the sha, \`(#N)\` survives it)`,
+  "batching: one session = one branch = one squash-merged PR, one commit per chunk · add the next chunk only while the PR stays reviewable in one sitting, never past 3 · a chunk gets its own PR when it changes a DB schema/migration or persisted format, touches auth/permissions/security or money logic, changes a public API/CLI contract, or needs a design review · close each chunk fully (tick + handoff note + commit) before the next; stop at anything that needs a human decision · a session starts a fresh branch from origin/main — never push onto a branch whose PR already merged (`gh pr view --json state`) · PR title names the plan and its chunks (`PLAN-x chunk 2–3`) · a chunk that must build on an unmerged branch is stacked (PR base = that branch; once it merges: `git rebase --onto origin/main <lower> <upper>`)",
+  `parallel: starting a chunk, append \`(wip <branch>)\` to its TL;DR line — the plan dir is shared, so another worktree's \`fapony plan\` skips it at once · a chunk runs alongside another only when \`fapony plan\` lists it under "can run alongside" (its \`(after <n>)\` / \`(after —)\` is met) and shares no file with the chunk in progress · the planner writes \`(after …)\` on a chunk line only when it truly does not wait on the chunk before it · each parallel chunk: own worktree, own branch, own PR`,
+  `closing a step: tick TL;DR with sha and drop its \`(wip …)\` — no commit (a measurement) cites \`(fael:<decision id>)\` instead, a dropped chunk is \`[~]\` + the decision saying why · \`git commit\` files only · \`fael add note "<what the next chunk must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note; a chunk run in parallel with another open chunk of this plan, in another worktree, writes \`--key ${anchor}:chunk-<n>\` instead, <n> digits only) · after \`gh pr create\`, append \`(#N)\` to that tick (a squash rewrites the sha, \`(#N)\` survives it)`,
 ];
 
 /** First-section items with the `- [ ] ` / `- [x] ` / `- [~] ` marker cut
@@ -121,6 +124,18 @@ const isHighPriority = (planPath: string): boolean => {
   } catch {
     return false;
   }
+};
+
+const isOpen = (l: string): boolean => /^\s*[-*]\s+\[\s\]/.test(l);
+
+// The worktree's branch — a `(wip <branch>)` claim naming it is this session's.
+const currentBranch = (): string | null => {
+  const p = Bun.spawnSync(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
+    cwd: root,
+    stderr: "ignore",
+  });
+  const b = p.stdout.toString().trim();
+  return p.exitCode === 0 && b && b !== "HEAD" ? b : null;
 };
 
 const clip = (s: string, max = TEXT_MAX): string => {
@@ -210,18 +225,51 @@ function showPlan(file: string, chunk: string | null): void {
   console.log(`# ${readPlanTitle(file) || basename(file)} — ${rel(file)}`);
   const spec = specFile(file);
   if (spec) console.log(specLine(spec));
-  // `plan:x:chunk-<label>` picks another chunk as "next"; else the first unchecked
-  const picked = chunk
-    ? unchecked.findIndex(
-        (c) => chunkLabel(c)?.toLowerCase() === chunk.toLowerCase(),
+  // `plan:x:chunk-<label>` picks that chunk as "next"; else the picker: the
+  // first open chunk no other worktree claimed whose `(after …)` is met.
+  const { ordered } = firstSectionItems(file);
+  const pick = pickChunks(ordered, currentBranch());
+  const openLines = ordered.filter(isOpen);
+  const toAt = (i: number) => (i < 0 ? -1 : openLines.indexOf(ordered[i]));
+  const at = chunk
+    ? Math.max(
+        unchecked.findIndex(
+          (c) => chunkLabel(c)?.toLowerCase() === chunk.toLowerCase(),
+        ),
+        0,
       )
-    : -1;
-  const at = Math.max(picked, 0);
+    : toAt(pick.next);
   if (spec?.file && unchecked[at])
     for (const ref of specRefs(spec.file, unchecked[at])) console.log(ref);
   if (unchecked.length) {
-    console.log(`\n## next\n- [ ] ${unchecked[at]}`);
-    const later = unchecked.filter((_, i) => i !== at);
+    const name = planKeyName(file) ?? "<name>";
+    const elsewhere = chunk ? [] : pick.wip.map((w) => toAt(w.at));
+    const alongside = chunk ? [] : pick.alongside;
+    if (at >= 0) console.log(`\n## next\n- [ ] ${unchecked[at]}`);
+    else
+      console.log(
+        `\n## next\n(none ready — ${pick.wip.length ? `${pick.wip.length} chunk(s) claimed by another worktree; ` : ""}the first open chunk waits on ${pick.waitsOn.map((l) => `chunk ${l}`).join(", ") || "an open chunk"})`,
+      );
+    if (elsewhere.length) {
+      console.log(`\n## in progress in another worktree`);
+      for (const [i, w] of pick.wip.entries())
+        console.log(`- ${headline(unchecked[elsewhere[i]])} — ${w.branch}`);
+    }
+    if (alongside.length) {
+      console.log(
+        `\n## can run alongside (another worktree: \`fapony plan plan:${name}:chunk-<label>\`)`,
+      );
+      for (const a of alongside)
+        console.log(
+          `- ${headline(unchecked[toAt(a.at)])}${a.shared.length ? ` — ⚠ shares ${a.shared.join(", ")} with a chunk in progress: run it after, not alongside` : ""}`,
+        );
+    }
+    const shown = new Set([
+      at,
+      ...elsewhere,
+      ...alongside.map((a) => toAt(a.at)),
+    ]);
+    const later = unchecked.filter((_, i) => !shown.has(i));
     if (later.length) {
       console.log(`\n## later (${later.length})`);
       for (const c of later) console.log(`- ${headline(c)}`);
@@ -256,7 +304,7 @@ function showPlan(file: string, chunk: string | null): void {
   // stable sort keeps newest-first. Every other open row about the plan is only
   // counted — `fael kickoff` owns that list.
   const name = planKeyName(file);
-  const nextLabel = unchecked[at] ? chunkLabel(unchecked[at]) : null;
+  const nextLabel = at >= 0 && unchecked[at] ? chunkLabel(unchecked[at]) : null;
   const handoffKey = name ? `plan:${name}:handoff` : null;
   const nextKey =
     name && nextLabel ? `plan:${name}:chunk-${nextLabel.toLowerCase()}` : null;
@@ -285,6 +333,11 @@ function showPlan(file: string, chunk: string | null): void {
         `(+${rest} open rows about this plan — fael kickoff ${name ? `plan:${name}` : rel(file)})`,
       );
   }
+  if (name)
+    for (const r of misfiledHandoffs(openRows(), name))
+      console.log(
+        `⚠ handoff under a key fapony plan never reads: [${r.id}] ${r.key} — re-file it: fael add note "<text>" --files <f>,plan:${name} --key plan:${name}:${r.key?.split(":").pop()} --supersedes ${r.id}`,
+      );
   if (unchecked.length) {
     console.log(`\n## closing`);
     for (const rule of chunkRules(`plan:${name ?? "<name>"}`))
@@ -311,6 +364,7 @@ function showAll(): void {
         a.localeCompare(b),
     );
   console.log(`# ${rel(planDir)}/ — ${active.length} active plan(s)`);
+  const branch = currentBranch();
   for (const f of active) {
     const items = readPlanSectionItems(f);
     const { unchecked } = items;
@@ -322,8 +376,30 @@ function showAll(): void {
     console.log(
       `\n- ${basename(f)} — ${tally(items)}${items.unknown.length ? ` · ⚠ ${items.unknown.length} unknown checkbox(es)` : ""}${tags.length ? ` · ${tags.join(" · ")}` : ""}`,
     );
-    if (unchecked[0]) console.log(`  next: ${clip(unchecked[0])}`);
+    const { ordered } = firstSectionItems(f);
+    const pick = pickChunks(ordered, branch);
+    if (pick.wip.length)
+      console.log(
+        `  in progress elsewhere: ${pick.wip.map((w) => `${chunkLabel(ordered[w.at]) ?? "?"} (${w.branch})`).join(", ")}`,
+      );
+    if (pick.next >= 0)
+      console.log(
+        `  next: ${clip(ordered[pick.next].replace(/^\s*[-*]\s+\[\s\]\s+/, ""))}`,
+      );
+    else if (unchecked[0])
+      console.log(
+        `  next: none ready — waits on ${pick.waitsOn.map((l) => `chunk ${l}`).join(", ") || "a claimed chunk"}`,
+      );
   }
+  // A handoff key that names no plan is a note no `fapony plan` will show.
+  const names = [planDir, doneDir].flatMap((d) =>
+    existsSync(d) ? readdirSync(d).flatMap((n) => planKeyName(n) ?? []) : [],
+  );
+  const orphans = orphanHandoffKeys(openRows(), names);
+  if (orphans.length)
+    console.log(
+      `\n⚠ ${orphans.length} open handoff key(s) name no plan in ${rel(planDir)}/ or ${rel(doneDir)}/: ${orphans.slice(0, 5).join(", ")} — re-file under plan:<name>:handoff (--supersedes <id>)`,
+    );
   if (shipped.size) {
     console.log(`\n## shipped but not archived into done/ (${shipped.size})`);
     for (const n of shipped) console.log(`- ${n}`);
