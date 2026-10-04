@@ -239,7 +239,8 @@ the older way (`--files <PLAN path>`) still show up — fapony matches them by f
 cannot drift; a hand-kept master file always does. `fapony plan check` verifies ticked chunk
 shas against git history (a ticked box with no sha to check is a claim, not a close; a chunk with
 no commit — a measurement — cites `(fael:<decision id>)`, and `[~]` marks a dropped one) and flags
-dangling `blocked_by` refs; `fapony plan sweep PLAN-x.md --apply` archives a shipped plan with `git mv`
+dangling `blocked_by` refs; it and `fapony plan <PLAN>` warn when a TL;DR passes 15 lines or
+4,000 chars, or an open chunk still carries `~~struck~~` history; `fapony plan sweep PLAN-x.md --apply` archives a shipped plan with `git mv`
 into `.fapony/done/` — same name, same depth, so every relative link inside the file survives the
 move. A spec lives in `.fapony/spec/` while a plan cites it (`spec:` frontmatter) and moves to
 `done/` with the last plan that does — `plan sweep --apply` keeps it if another active plan still

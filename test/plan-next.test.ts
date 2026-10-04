@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { cmdPlan } from "../src/plan/index.js";
 import { cmdPlanNext } from "../src/plan/next.js";
 import { initPlanStore } from "../src/plan/store.js";
-import { chunkLabel, openRowsFor } from "../src/plan/sweep.js";
+import { chunkLabel, openRowsFor, tldrWarns } from "../src/plan/sweep.js";
 import { captureLogs, withFakeFael, withTempRepo } from "./helpers.js";
 
 const plan = (title: string, fm: string, ticks: string): string =>
@@ -621,5 +621,38 @@ test("testPlanPathFindsItsOwnFaponyDirFromRepoRoot", () => {
     } finally {
       process.chdir(prev);
     }
+  });
+});
+
+test("testTldrWarnsOnSizeAndStruckOpenChunks", () => {
+  withTempRepo((dir) => {
+    const p = join(dir, ".fapony", "plan");
+    mkdirSync(p, { recursive: true });
+    const lean = join(p, "PLAN-lean.md");
+    writeFileSync(
+      lean,
+      plan("L", "", "- [x] chunk 1 — a ~~old~~ (abc1234)\n- [ ] chunk 2 — b"),
+    );
+    assert.deepStrictEqual(tldrWarns(lean), []); // ~~ on a closed chunk is fine
+
+    const long = join(p, "PLAN-long.md");
+    const ticks = Array.from(
+      { length: 16 },
+      (_, i) => `- [ ] chunk ${i + 1} — x`,
+    );
+    writeFileSync(long, plan("Long", "", ticks.join("\n")));
+    assert.match(tldrWarns(long).join("\n"), /TL;DR is 16 lines/);
+
+    const wide = join(p, "PLAN-wide.md");
+    writeFileSync(wide, plan("W", "", `- [ ] chunk 1 — ${"y".repeat(4100)}`));
+    assert.match(tldrWarns(wide).join("\n"), /4\d{3} chars/);
+
+    const struck = join(p, "PLAN-struck.md");
+    writeFileSync(
+      struck,
+      plan("S", "", "- [ ] chunk 3 — ship ~~via (#160)~~ via print"),
+    );
+    const out = run(dir, [struck]);
+    assert.match(out, /⚠ open chunk 3 carries struck-through text/, out);
   });
 });
