@@ -1,9 +1,11 @@
 // src/plan/index.ts — `fapony plan [<PLAN.md>] | adopt | sweep | park | unpark | check`
 
+import { dirname } from "node:path";
 import { cmdPlanAdopt } from "./adopt.js";
 import { fixPlanState } from "./fix.js";
 import { cmdPlanNext } from "./next.js";
 import { cmdPlanPark } from "./park.js";
+import { mdPath } from "./resolve.js";
 import { initPlanStore } from "./store.js";
 import { cmdPlanCheck, cmdPlanSweep } from "./sweep.js";
 
@@ -49,6 +51,17 @@ export function cmdPlan(a: string[]): void {
     return;
   }
   initPlanStore();
+  // A plan path brings its own .fapony/: run from a monorepo root,
+  // apps/x/.fapony/plan/PLAN-x.md reads apps/x/.fapony/spec/, not the root's.
+  // adopt's path is the doc to adopt, not a plan — it stays on cwd.
+  const path =
+    sub === "adopt"
+      ? null
+      : a
+          .filter((_, i) => a[i - 1] !== "--files")
+          .map(mdPath)
+          .find(Boolean);
+  if (path) initPlanStore(dirname(path));
   if (sub === "adopt") cmdPlanAdopt(rest);
   else if (sub === "sweep") cmdPlanSweep(rest);
   else if (sub === "park" || sub === "unpark")

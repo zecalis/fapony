@@ -3,6 +3,7 @@ import { test } from "bun:test";
 import assert from "node:assert";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { cmdPlan } from "../src/plan/index.js";
 import { cmdPlanNext } from "../src/plan/next.js";
 import { initPlanStore } from "../src/plan/store.js";
 import { chunkLabel, openRowsFor } from "../src/plan/sweep.js";
@@ -598,5 +599,27 @@ test("testPlanWarnsOnOpenGuesses", () => {
       !run(dir, ["PLAN-h.md"]).includes("(guess)"),
       "no guess, no warn",
     );
+  });
+});
+
+test("testPlanPathFindsItsOwnFaponyDirFromRepoRoot", () => {
+  withTempRepo((dir) => {
+    const app = join(dir, "apps", "x", ".fapony");
+    mkdirSync(join(app, "plan"), { recursive: true });
+    mkdirSync(join(app, "spec"), { recursive: true });
+    writeFileSync(join(app, "spec", "SPEC-x.md"), "# SPEC-x\n");
+    writeFileSync(
+      join(app, "plan", "PLAN-x.md"),
+      plan("X", "spec: SPEC-x.md\n", "- [ ] chunk 1 — go"),
+    );
+    const prev = process.cwd();
+    process.chdir(dir);
+    try {
+      const out = captureLogs(() => cmdPlan(["apps/x/.fapony/plan/PLAN-x.md"]));
+      assert.match(out, /spec: apps\/x\/\.fapony\/spec\/SPEC-x\.md/, out);
+      assert.doesNotMatch(out, /⚠ spec/, out);
+    } finally {
+      process.chdir(prev);
+    }
   });
 });

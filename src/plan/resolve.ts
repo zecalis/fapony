@@ -38,12 +38,16 @@ const listDocs = (): { file: string; key: string }[] =>
     }
   });
 
+/** `arg` as an existing .md path — from cwd or from the repo root — else null. */
+export const mdPath = (arg: string): string | null =>
+  [resolve(arg), join(root, arg)].find(
+    (p) => p.endsWith(".md") && existsSync(p),
+  ) ?? null;
+
 /** PLAN-x.md · PLAN-x · x · plan:x · plan:x:handoff · plan:x:chunk-3 (or -f3) · any path · a unique
  *  substring. plan/ wins over done/ on an exact name. */
 export const resolvePlan = (arg: string): Resolved => {
-  const direct = [resolve(arg), join(root, arg)].find(
-    (p) => p.endsWith(".md") && existsSync(p),
-  );
+  const direct = mdPath(arg);
   if (direct) return { ok: true, file: direct, chunk: null };
 
   const m = /^(?:plan:)?(.+?)(?::chunk-([a-z0-9]+)|:handoff)?$/i.exec(
