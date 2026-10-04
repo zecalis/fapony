@@ -14,7 +14,6 @@ scripts/*
 !scripts/smoke-publish.sh
 !scripts/release.sh
 !scripts/test-one.ts
-!scripts/codemod-bun-test.ts
 
 # Added by code-review-graph
 .code-review-graph/
