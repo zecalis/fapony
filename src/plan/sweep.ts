@@ -807,7 +807,6 @@ export const cmdPlanSweep = (a: string[]) => {
   }
   const src = r.file;
   const name = basename(src);
-  const srcDir = dirname(src);
   const fm = parsePlanFrontmatter(src);
   // superseded = closed without shipping; done/ is where closed plans live
   const superseded = fm.status === "superseded";
