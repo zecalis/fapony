@@ -179,6 +179,11 @@ test("testCheckTickedLinePrNumberSurvivesSquash", () => {
       diverged: [],
       cited: 2,
     });
+    // same, written in one group the way ticks are hand-written: (sha, #N)
+    assert.deepEqual(
+      checkTickedLine(`- [x] pr0d (${diverged}, #120) — done`, dir),
+      { missing: [], diverged: [], cited: 2 },
+    );
     // …also for the judge that asks "is it on the default branch"
     assert.deepEqual(checkTickedLine(tick(held, "#120"), dir, isOnDefault), {
       missing: [],
