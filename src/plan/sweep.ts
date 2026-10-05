@@ -642,7 +642,8 @@ export const splitHandoffs = (
       stale.push({
         row,
         n: chunkLabel(line) ?? key ?? "latest",
-        ref: extractShas(line)[0] ?? /\(#\d+\)/.exec(line)?.[0] ?? "",
+        ref:
+          extractShas(line)[0] ?? prRefs(line).map((n) => `(#${n})`)[0] ?? "",
       });
     else live.push(row);
   }
@@ -999,6 +1000,12 @@ export const SHA_RE = /(?<![0-9a-f])[0-9a-f]{7,12}(?![0-9a-f])/g;
 
 export const extractShas = (line: string): string[] => line.match(SHA_RE) ?? [];
 
+/** PR numbers cited in a paren group: `(#208)`, `(6dbd9d2, #208)`, `(#3 + #4)`. */
+export const prRefs = (line: string): string[] =>
+  (line.match(/\([^)]*\)/g) ?? []).flatMap((g) =>
+    [...g.matchAll(/(?<![\w&])#(\d+)\b/g)].map((m) => m[1]),
+  );
+
 const gitOk = (args: string[], cwd: string): boolean => {
   try {
     return (
@@ -1138,7 +1145,8 @@ const lookupShas = (
 // is (e898877 + e307fe6), where e898877 resolves to no object at all yet is
 // unmistakably a citation, not prose. `held` gets the full sha.
 //
-// `(#N)` is the tick that survives a squash: the merge rewrites the cited sha
+// `(#N)` — or `#N` anywhere in a paren group, `(6dbd9d2, #208)` — is the tick
+// that survives a squash: the merge rewrites the cited sha
 // (nothing holds it afterwards) but leaves "subject (#N)" on the default
 // branch. So a `(#N)` naming exactly one default-branch commit proves the
 // closure — the line's squashed shas are not "diverged". A `(#N)` naming none
@@ -1163,11 +1171,11 @@ export const checkTickedLine = (
   }
   let cited = 0;
   let merged = false;
-  for (const m of line.matchAll(/\(#(\d+)\)/g)) {
+  for (const pr of prRefs(line)) {
     cited++;
-    const n = prCommits(m[1], cwd).length;
+    const n = prCommits(pr, cwd).length;
     if (n === 1) merged = true;
-    else (n ? ambiguous : open).push(`#${m[1]}`);
+    else (n ? ambiguous : open).push(`#${pr}`);
   }
   let faelCited = false;
   for (const m of line.matchAll(FAEL_REF_RE)) {
@@ -1202,7 +1210,7 @@ export const checkTickedLine = (
 // merge history included) — not main's tip at move time.
 export const shippingCommit = (file: string, cwd: string): string => {
   const fulls = firstSectionItems(file).checked.flatMap((line) => [
-    ...[...line.matchAll(/\(#(\d+)\)/g)].flatMap((m) => prCommits(m[1], cwd)),
+    ...prRefs(line).flatMap((pr) => prCommits(pr, cwd)),
     ...[...lookupShas(extractShas(line), cwd).values()].flatMap((f) =>
       f.commit && isOnDefault(f.commit, cwd) ? [f.commit] : [],
     ),
