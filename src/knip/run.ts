@@ -1,8 +1,14 @@
 // src/knip/run.ts — run knip once, never throw.
-// Read-only: spawns `bunx knip --reporter json` in the target worktree and
+// Read-only: spawns `bunx knip@6 --reporter json` in the target worktree and
 // parses stdout. Any failure (not installed, no package.json, timeout,
 // unparseable) returns { skipped } — the seed prints one line, never fails
 // the whole lookup (same philosophy as the graph scan failure path).
+//
+// Pinned to knip@6: an unpinned `bunx knip` resolves whatever is newest on
+// the machine running the seed, and exit codes / stderr wording differ
+// across versions (measured: exit-2 + help-on-stdout with no package.json
+// on one version, exit-1 + empty stderr on another). Every skipped line
+// carries the `knip:` prefix so callers can grep one shape.
 
 import type { KnipEntry, KnipResult } from "./types.js";
 
@@ -68,14 +74,14 @@ function toEntry(e: RawIssue): KnipEntry | null {
 export function runKnip(worktree: string): KnipResult {
   let p: { exitCode: number; stdout: Uint8Array; stderr: Uint8Array };
   try {
-    p = Bun.spawnSync(["bunx", "knip", "--reporter", "json"], {
+    p = Bun.spawnSync(["bunx", "knip@6", "--reporter", "json"], {
       cwd: worktree,
       env: process.env,
       stdout: "pipe",
       stderr: "pipe",
     });
   } catch {
-    return { skipped: "knip not runnable here (bunx spawn failed)" };
+    return { skipped: "knip: not runnable here (bunx spawn failed)" };
   }
   const err = Buffer.from(p.stderr).toString().trim().split("\n")[0] ?? "";
   // No project here at all (no package.json) — stdout is just `--help`
@@ -87,7 +93,9 @@ export function runKnip(worktree: string): KnipResult {
   }
   if (p.exitCode !== 0) {
     if (Buffer.from(p.stdout).toString().trim().length === 0) {
-      return { skipped: `knip exit ${p.exitCode} (${err.slice(0, 80)})` };
+      return {
+        skipped: `knip: skipped (exit ${p.exitCode} ${err.slice(0, 80)})`,
+      };
     }
     // Non-zero with stdout: fall through to the parse below.
   }
@@ -102,6 +110,6 @@ export function runKnip(worktree: string): KnipResult {
     }
     return { issues: entries };
   } catch {
-    return { skipped: "knip output unparseable" };
+    return { skipped: "knip: output unparseable" };
   }
 }
