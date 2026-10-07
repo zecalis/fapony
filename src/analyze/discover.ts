@@ -7,12 +7,20 @@ import type { Dirent } from "node:fs";
 import { existsSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
-export const SCAN_EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".py", ".pyi"]);
+export const SCAN_EXTS = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".py",
+  ".pyi",
+  ".rs",
+]);
 
-// Files whose exports are listed. Rust is here but not in SCAN_EXTS: plan-seed
-// reads its `pub` items, while the import graph has no Rust edges — adding
-// `.rs` to the graph would report every Rust file as an orphan.
-export const EXPORT_EXTS = new Set([...SCAN_EXTS, ".rs"]);
+// Files whose exports are listed — everything in SCAN_EXTS. (Rust used to be
+// export-only: before src/analyze/rust.ts resolved `mod`/`use` edges, putting
+// `.rs` in the graph reported every Rust file as an orphan.)
+export const EXPORT_EXTS = new Set([...SCAN_EXTS]);
 
 // "templates" for the same reason knip.json ignores templates/**: those files
 // ship as a template laid down in other repos by `fapony init` and never

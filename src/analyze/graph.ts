@@ -18,6 +18,8 @@ import {
   scanPythonImports,
 } from "./python.js";
 import { IMPORT_TYPE_RE, REQUIRE_RE, resolveRelative } from "./resolve-ts.js";
+import type { RsCrate } from "./rust.js";
+import { resolveRustImport, rsCrateForFile, scanRustImports } from "./rust.js";
 import type { ImportGraph } from "./types.js";
 
 // Root pyproject.toml only: declared deps (normalized to import-name guesses)
@@ -76,6 +78,7 @@ export function buildGraph(dir: string): ImportGraph {
   // Built lazily — a TS-only repo never pays for it.
   let pyIndex: Map<string, string> | null = null;
   let pyproject: ReturnType<typeof readPyproject> | null = null;
+  const rsCrates = new Map<string, RsCrate | null>();
   const entries = new Set<string>();
 
   const transpiler = new Bun.Transpiler({ loader: "ts" });
@@ -111,6 +114,30 @@ export function buildGraph(dir: string): ImportGraph {
         else unresolved++;
       }
       deps.set(rel, pyEdges);
+      continue;
+    }
+    if (rel.endsWith(".rs")) {
+      // No Transpiler either — same one-crates-per-package anchoring as
+      // Python: crate root = the deepest Cargo.toml above the file, its
+      // `src/` is the module tree that `crate::` paths start from.
+      const crate = rsCrateForFile(absDir, rel, rsCrates);
+      const rsEdges = new Set<string>();
+      for (const imp of scanRustImports(content)) {
+        const r = resolveRustImport(rel, imp, crate, filesSet);
+        if (r.hit) rsEdges.add(r.hit);
+        else if (r.external) external++;
+        else unresolved++;
+      }
+      deps.set(rel, rsEdges);
+      // Anything cargo runs on its own is an entry: crate roots, extra
+      // bins (src/bin/), integration tests, examples, benches — the same
+      // rule `[project.scripts]` gets for Python.
+      if (
+        /^(?:main|lib)\.rs$/.test(rel.slice(rel.lastIndexOf("/") + 1)) ||
+        /(?:^|\/)(?:tests|examples|benches)\/[^/]+\.rs$/.test(rel) ||
+        /(?:^|\/)src\/bin\//.test(rel)
+      )
+        entries.add(rel);
       continue;
     }
     const raws: string[] = [];

@@ -296,6 +296,122 @@ test("testAnalyzeExportsThroughBarrels", () => {
   );
 });
 
+test("testAnalyzeRustModuleGraph", () => {
+  withFixture(
+    {
+      // workspace: root manifests, two members (`core` crate + an app crate)
+      "Cargo.toml": '[workspace]\nmembers = ["core", "app"]\n',
+      "core/Cargo.toml":
+        '[package]\nname = "fael_core"\n[dependencies]\nserde = "1"\n',
+      // crate root: entry, mod decls, brace use, extern crate; `mod tests;`
+      // via cfg attr still resolves to the file below it
+      "core/src/lib.rs":
+        "mod util;\nmod deep;\npub use util::greet;\n#[cfg(test)]\nmod tests;\nuse crate::util::greet;\nuse core::no::foot;\nextern crate serde;\n",
+      // declared by `mod util;` and used via `use crate::util::greet;`
+      "core/src/util.rs": "pub fn greet() {}\n",
+      "core/src/tests.rs":
+        "use crate::util::greet;\nuse crate::{\n  util::greet,\n};\n",
+      // 2018 submodule: `mod deep;` inside lib.rs → core/src/deep.rs, whose
+      // own files live under deep/
+      "core/src/deep.rs": "mod leaf;\nuse self::leaf::one;\nuse super::roof;\n",
+      "core/src/deep/leaf.rs":
+        "pub fn one() {}\nuse super::super::roof::ROOF;\n",
+      "core/src/roof.rs": "pub const ROOF: u8 = 1;\n",
+      // app crate: `crate::` paths anchor to its own src, not core's;
+      // the root renames fael_core to `core`, so crate::core is extern
+      "app/Cargo.toml":
+        '[package]\nname = "fael"\n[dependencies]\nfael-core = "*"\nserde = "1"\n',
+      "app/src/main.rs":
+        "mod user;\nuse fael_core::{self as core, Config, Log};\nuse crate::core::stats;\nuse serde::de::Deserialize;\nuse unknown_crate::thing;\nuse std::io;\nfn main() {}\n",
+      "app/src/other.rs": "pub use crate::core::Config;\n",
+      "app/src/user.rs": "use crate::other::Config;\n",
+      // integration tests import their own crate by name — cargo entry
+      "core/tests/it.rs": "use fael_core::greet;\n",
+      // nobody declares it, nothing uses it → orphan candidate
+      "core/src/ghost.rs": "pub fn gone() {}\n",
+    },
+    (dir) => {
+      const graph = buildGraph(dir);
+      assert.ok(
+        graph.files.includes("core/src/util.rs"),
+        "rs files are scanned",
+      );
+      assert.deepEqual([...(graph.deps.get("core/src/lib.rs") ?? [])].sort(), [
+        "core/src/deep.rs",
+        "core/src/tests.rs",
+        "core/src/util.rs",
+      ]);
+      assert.deepEqual([...(graph.deps.get("core/src/deep.rs") ?? [])].sort(), [
+        "core/src/deep/leaf.rs",
+        "core/src/roof.rs",
+      ]);
+      assert.deepEqual(
+        [...(graph.deps.get("core/src/deep/leaf.rs") ?? [])],
+        ["core/src/roof.rs"],
+      );
+      assert.deepEqual(
+        [...(graph.deps.get("core/src/tests.rs") ?? [])].sort(),
+        ["core/src/lib.rs", "core/src/util.rs"],
+      );
+      assert.deepEqual(
+        [...(graph.deps.get("app/src/main.rs") ?? [])],
+        ["app/src/user.rs"],
+      );
+      assert.deepEqual([...(graph.deps.get("app/src/other.rs") ?? [])], []);
+      assert.ok(graph.entries?.has("core/src/lib.rs"), "lib.rs is an entry");
+      assert.ok(graph.entries?.has("app/src/main.rs"), "main.rs is an entry");
+      assert.ok(
+        graph.entries?.has("core/tests/it.rs"),
+        "integration tests are cargo entries",
+      );
+      // unknown_crate only; external: core(no), serde ×2, fael_core,
+      // std, crate::core ×3 (aliased), it.rs self-import
+      assert.equal(graph.unresolved, 1);
+      assert.equal(graph.external, 8);
+      const findings = diagnose(graph);
+      const orphans = findings.filter((f) => f.kind === "orphan");
+      assert.deepEqual(
+        orphans.map((f) => f.file),
+        ["core/src/ghost.rs"],
+      );
+    },
+  );
+  console.log("  ✓ analyze resolves rust mod/use edges (crate, self, super)");
+});
+
+test("testAnalyzeRustCommentsAreNotEdges", () => {
+  withFixture(
+    {
+      "Cargo.toml": '[package]\nname = "x"\n',
+      "src/lib.rs":
+        "// use crate::no::Such;\n/* keep\npub mod no;\nuse crate::also::Nah;\n*/\nuse crate::real::Thing;\n",
+      "src/real.rs": "pub struct Thing;\n",
+    },
+    (dir) => {
+      const graph = buildGraph(dir);
+      assert.deepEqual(
+        [...(graph.deps.get("src/lib.rs") ?? [])],
+        ["src/real.rs"],
+      );
+      assert.equal(graph.unresolved, 0);
+      assert.ok(
+        !findOrphan(graph, "src/no.rs"),
+        "commented mod/use add no phantom files",
+      );
+    },
+  );
+  console.log("  ✓ analyze ignores rust imports inside comments");
+});
+
+function findOrphan(
+  graph: ReturnType<typeof buildGraph>,
+  file: string,
+): boolean {
+  return diagnose(graph)
+    .filter((f) => f.kind === "orphan")
+    .some((f) => f.file === file);
+}
+
 test("testAnalyzePythonRelativeGraph", () => {
   withFixture(
     {
