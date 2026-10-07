@@ -30,6 +30,12 @@ import {
   isTestFile,
   SCAN_EXTS,
 } from "../analyze/index.js";
+import {
+  filterKnipByScope,
+  formatKnipRows,
+  isSkipped,
+  runKnip,
+} from "../knip/index.js";
 import { extractBody, extractExports } from "../map.js";
 import { assertSafe } from "../safety.js";
 import { execGit, gitOk, gitValue, SeedError, SIG_MAX } from "./primitives.js";
@@ -61,7 +67,7 @@ const LOOKUP_OUTPUT_CAP = 120;
 const DISCLAIMER =
   "static graph only — seed is where to enter, not what is verified";
 const USAGE =
-  "usage: fapony review-seed [--staged | --commit <sha> | --range <a...b> | --files f1,f2,dir | --plan <PLAN.md>] [--body sym[,sym]] [--callers sym[,sym]]";
+  "usage: fapony review-seed [--staged | --commit <sha> | --range <a...b> | --files f1,f2,dir | --plan <PLAN.md>] [--body sym[,sym]] [--callers sym[,sym]] [--knip]";
 // --body / --callers are the executor's lookup, not the reviewer's seed: when
 // either is present the output is only those sections (plus worktree line and
 // disclaimer) — the standard sections would be a wall around the one answer.
@@ -134,6 +140,8 @@ function parseScope(args: string[]): Scope {
       i++; // consumed by parseLookup — never a scope flag
       continue;
     }
+    // --knip is an orthogonal modifier (one extra section), not a scope.
+    if (a === "--knip") continue;
     if (a === "--staged") flags.push({ kind: "staged" });
     else if (a === "--commit") {
       const v = value();
@@ -796,7 +804,13 @@ export function renderSeed(args: string[], cwd: string): string {
   // feeds --callers its targets), but the standard sections are suppressed —
   // the caller asked for one answer, not the review seed around it.
   const lookup = parseLookup(args);
+  const hasKnip = args.includes("--knip");
   if (lookup.body.length > 0 || lookup.callers.length > 0) {
+    if (hasKnip) {
+      throw new SeedError(
+        `review-seed: --knip needs a scope section, not --body/--callers\n${USAGE}`,
+      );
+    }
     return renderLookup(lookup, scope, cwd, worktree);
   }
 
@@ -953,6 +967,25 @@ export function renderSeed(args: string[], cwd: string): string {
       if (wrapped.length > MAX_DYNAMIC_LINES) {
         lines.push(`  … +${wrapped.length - MAX_DYNAMIC_LINES} more lines`);
       }
+    }
+  }
+
+  // --knip: unused exports/files scoped to this seed's entries. Opt-in (slow:
+  // spawns bunx) and TS-only — knip knows nothing of .py/.rs, so those files
+  // simply never match. Never fails the seed: an unrunnable knip is one line.
+  if (hasKnip) {
+    const knip = runKnip(worktree);
+    if (isSkipped(knip)) {
+      lines.push(knip.skipped);
+    } else {
+      lines.push(
+        ...formatKnipRows(
+          filterKnipByScope(
+            knip.issues,
+            entries.map((e) => e.path),
+          ),
+        ),
+      );
     }
   }
 
