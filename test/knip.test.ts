@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { filterKnipByScope } from "../src/knip/filter.js";
 import { formatKnipRows } from "../src/knip/format.js";
+import { interpretKnipSpawn, isSkipped } from "../src/knip/index.js";
 import type { KnipEntry } from "../src/knip/types.js";
 import { SeedError } from "../src/seed/primitives.js";
 import { renderSeed } from "../src/seed/review-seed.js";
@@ -106,30 +107,57 @@ test("review-seed --knip with --body errors instead of mixing outputs", () => {
   }
 });
 
-test("review-seed --knip parses knip's exit-1-with-stdout (findings, not failure)", () => {
-  // knip exits 1 when it finds unused exports — stdout IS the result.
-  // A seed that treats that as a skip hides the exact rows the flag exists for.
-  const dir = mkdtempSync(join(tmpdir(), "fapony-knip-exit-"));
-  try {
-    execSync("git init", { cwd: dir, stdio: "ignore" });
-    execSync("git config user.email 'test@test.com'", {
-      cwd: dir,
-      stdio: "ignore",
-    });
-    execSync("git config user.name 'Test'", { cwd: dir, stdio: "ignore" });
-    writeFileSync(join(dir, "package.json"), '{"name":"t","type":"module"}\n');
-    writeFileSync(
-      join(dir, "dead.ts"),
-      "export const stale = 1;\nexport const fresh = 2;\n",
-    );
-    execSync("git add .", { cwd: dir, stdio: "ignore" });
-    execSync('git commit -m "init"', { cwd: dir, stdio: "ignore" });
-    const out = renderSeed(["--files", "dead.ts", "--knip"], dir);
-    assert.doesNotMatch(out, /knip exit 1/);
-    assert.match(out, /knip \(unused|knip: no unused/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test("knip exit-1-with-stdout parses as findings, not failure", () => {
+  // knip exits non-zero when it finds unused exports — stdout IS the result.
+  // A seed that treats that as a skip hides the exact rows the flag exists
+  // for. Canned spawn bytes: no bunx, no network, no temp repo.
+  const stdout = Buffer.from(
+    JSON.stringify({
+      issues: [
+        {
+          file: "dead.ts",
+          files: [],
+          // Extra knip fields (col/pos) must not break the defensive parse.
+          exports: [{ name: "stale", line: 1, col: 14, pos: 13 }],
+          types: [],
+          enumMembers: [],
+          namespaceMembers: [],
+          dependencies: [],
+          devDependencies: [],
+        },
+      ],
+    }),
+  );
+  const r = interpretKnipSpawn({
+    exitCode: 1,
+    stdout,
+    stderr: Buffer.from(""),
+  });
+  assert.ok(!isSkipped(r), "exit 1 with JSON stdout must not skip");
+  const lines = formatKnipRows(filterKnipByScope(r.issues, ["dead.ts"]));
+  assert.match(lines.join("\n"), /knip \(unused/);
+  assert.match(lines.join("\n"), /dead\.ts — unused exports: stale:1/);
+});
+
+test("knip exit-1 with empty stdout is a skip", () => {
+  const r = interpretKnipSpawn({
+    exitCode: 1,
+    stdout: Buffer.from(""),
+    stderr: Buffer.from("something broke"),
+  });
+  assert.ok(isSkipped(r));
+  assert.match(r.skipped, /knip: skipped \(exit 1/);
+});
+
+test("knip timeout is a skip, never a hang", () => {
+  const r = interpretKnipSpawn({
+    exitCode: null,
+    stdout: Buffer.from(""),
+    stderr: Buffer.from(""),
+    exitedDueToTimeout: true,
+  });
+  assert.ok(isSkipped(r));
+  assert.match(r.skipped, /knip: skipped \(timed out/);
 });
 
 test("knip file cap at 10 with overflow count", () => {

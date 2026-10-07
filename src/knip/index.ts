@@ -2,7 +2,12 @@
 
 export { filterKnipByScope } from "./filter.js";
 export { formatKnipRows } from "./format.js";
-export { runKnip } from "./run.js";
+export {
+  interpretKnipSpawn,
+  KNIP_TIMEOUT_MS,
+  type KnipSpawnResult,
+  runKnip,
+} from "./run.js";
 export {
   isSkipped,
   type KnipEntry,
