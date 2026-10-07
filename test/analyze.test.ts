@@ -403,6 +403,35 @@ test("testAnalyzeRustCommentsAreNotEdges", () => {
   console.log("  ✓ analyze ignores rust imports inside comments");
 });
 
+// Attributes may sit on the same line as the item they annotate
+// (`#[cfg(test)] mod tests;`) — the edge is the item, not the line above it.
+test("testAnalyzeRustSameLineAttributesAreEdges", () => {
+  withFixture(
+    {
+      "Cargo.toml": '[package]\nname = "x"\n',
+      "src/lib.rs":
+        "#[cfg(test)] mod tests;\n#[allow(dead_code)] use crate::real::Thing;\n#[allow(unused)] pub mod extra;\n",
+      "src/tests.rs": "use crate::real::Thing;\n",
+      "src/real.rs": "pub struct Thing;\n",
+      "src/extra.rs": "pub fn e() {}\n",
+    },
+    (dir) => {
+      const graph = buildGraph(dir);
+      assert.deepEqual([...(graph.deps.get("src/lib.rs") ?? [])].sort(), [
+        "src/extra.rs",
+        "src/real.rs",
+        "src/tests.rs",
+      ]);
+      assert.equal(graph.unresolved, 0);
+      assert.ok(
+        !findOrphan(graph, "src/tests.rs"),
+        "same-line attributed mod/use must still resolve",
+      );
+    },
+  );
+  console.log("  ✓ analyze resolves rust mod/use behind same-line attributes");
+});
+
 // Strings are masked before comments: `"mod fake;"` in a string constant
 // must not declare a module, and a `"use …"` string must not add edges.
 test("testAnalyzeRustStringsAreNotCode", () => {
