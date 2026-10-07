@@ -399,7 +399,8 @@ test("testPlanSeedExistingInScope", () => {
 
 test("testPlanSeedExistingInScopeListsRustPubItems", () => {
   // SPEC §5: a Rust scope lists its `pub` items (column 0 only); private items
-  // and `impl` methods stay out, and a .rs file does not enter the import graph.
+  // and `impl` methods stay out. (`src/analyze/rust.ts` resolves `mod`/`use`
+  // edges, so .rs files DO enter the import graph since then.)
   const dir = mkdtempSync(join(tmpdir(), "fapony-plan-seed-rust-"));
   try {
     mkdirSync(join(dir, "core", "src"), { recursive: true });
