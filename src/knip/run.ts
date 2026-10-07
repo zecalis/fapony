@@ -12,6 +12,19 @@
 
 import type { KnipEntry, KnipResult } from "./types.js";
 
+/** Timeout for the spawned knip — the seed waits on this, so a hung knip
+ *  must degrade to one skipped line, never a hung lookup. */
+export const KNIP_TIMEOUT_MS = 60_000;
+
+/** The spawn outcome `interpretKnipSpawn` needs — a subset of Bun's
+ *  SyncSubprocess shape, so tests can feed canned results without spawning. */
+export interface KnipSpawnResult {
+  exitCode: number | null;
+  stdout: Uint8Array;
+  stderr: Uint8Array;
+  exitedDueToTimeout?: boolean;
+}
+
 interface RawIssue {
   name?: unknown;
   line?: unknown;
@@ -71,17 +84,13 @@ function toEntry(e: RawIssue): KnipEntry | null {
   };
 }
 
-export function runKnip(worktree: string): KnipResult {
-  let p: { exitCode: number; stdout: Uint8Array; stderr: Uint8Array };
-  try {
-    p = Bun.spawnSync(["bunx", "knip@6", "--reporter", "json"], {
-      cwd: worktree,
-      env: process.env,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-  } catch {
-    return { skipped: "knip: not runnable here (bunx spawn failed)" };
+/** Turn a finished spawn into issues-or-skipped. Pure (no spawning), so
+ *  tests feed canned exit codes and bytes instead of running knip. */
+export function interpretKnipSpawn(p: KnipSpawnResult): KnipResult {
+  if (p.exitedDueToTimeout) {
+    return {
+      skipped: `knip: skipped (timed out after ${KNIP_TIMEOUT_MS / 1000}s)`,
+    };
   }
   const err = Buffer.from(p.stderr).toString().trim().split("\n")[0] ?? "";
   // No project here at all (no package.json) — stdout is just `--help`
@@ -112,4 +121,20 @@ export function runKnip(worktree: string): KnipResult {
   } catch {
     return { skipped: "knip: output unparseable" };
   }
+}
+
+export function runKnip(worktree: string): KnipResult {
+  let p: KnipSpawnResult;
+  try {
+    p = Bun.spawnSync(["bunx", "knip@6", "--reporter", "json"], {
+      cwd: worktree,
+      env: process.env,
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: KNIP_TIMEOUT_MS,
+    });
+  } catch {
+    return { skipped: "knip: not runnable here (bunx spawn failed)" };
+  }
+  return interpretKnipSpawn(p);
 }
