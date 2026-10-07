@@ -140,12 +140,17 @@ export function parseRustUsePath(
 export function scanRustImports(content: string): RsImport[] {
   const out: RsImport[] = [];
   const lines = maskRsBlocks(maskRsStrings(content)).split("\n");
+  // Outer attributes sit on the same line as the item they annotate
+  // (`#[cfg(test)] mod tests;`) — skip them before the item keyword.
+  const attr = String.raw`(?:#\[[^\]]*\]\s*)*`;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     let m: RegExpMatchArray | null;
     if (
       (m = line.match(
-        /^[ \t]*(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_]\w*)\s*;/,
+        new RegExp(
+          `^[ \\t]*${attr}(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+([A-Za-z_]\\w*)\\s*;`,
+        ),
       ))
     ) {
       out.push({ kind: "self", segs: [m[1]], decl: true });
@@ -155,7 +160,9 @@ export function scanRustImports(content: string): RsImport[] {
       out.push({ kind: "extern", segs: [m[1]], decl: false });
       continue;
     }
-    m = line.match(/^[ \t]*(?:pub(?:\([^)]*\))?\s+)?use\s+(.*)/);
+    m = line.match(
+      new RegExp(`^[ \\t]*${attr}(?:pub(?:\\([^)]*\\))?\\s+)?use\\s+(.*)`),
+    );
     if (!m) continue;
     // `use a::b::{c,` spans lines — join until `;` (cap 20, like python).
     let rest = m[1];
@@ -236,7 +243,8 @@ function collectCrateAliases(absPkg: string): Map<string, string> {
     } catch {
       continue;
     }
-    const useRe = /^[ \t]*(?:pub(?:\([^)]*\))?\s+)?use\s+([^;]+);/gm;
+    const useRe =
+      /^[ \t]*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?use\s+([^;]+);/gm;
     let m: RegExpExecArray | null;
     while ((m = useRe.exec(masked))) {
       const body = m[1];
