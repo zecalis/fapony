@@ -81,6 +81,26 @@ export function maskRsBlocks(content: string): string {
   return out.join("\n");
 }
 
+// String masks before comment masks: a Rust string can carry `//` text that
+// would truncate a code line, or whole `use`/`mod` statements that would
+// read as edges (`let s = "use wasm::bind;";`). Same-line pairs only — a
+// string that never closes on its own line is left intact (fail-safe, like
+// the rest of this scanner). Lifetimes (`<'a, 'b>`) get eaten only when two
+// apostrophes share a line, and the eaten span then carries no `use`/`mod`
+// text in real code — accepted loss, cheaper than a real tokenizer.
+export function maskRsStrings(content: string): string {
+  const pad = (m: string) => " ".repeat(m.length);
+  return content
+    .split("\n")
+    .map((line) =>
+      line
+        .replace(/r#*"(?:\\.|[^\\\n"])*"/g, pad)
+        .replace(/"(?:\\.|[^\\\n"])*"/g, pad)
+        .replace(/'(?:\\.|[^'\\\n])'/g, pad),
+    )
+    .join("\n");
+}
+
 /** Dir the file's own submodules live under: `lookup.rs` → `lookup/`, `mod.rs` → its dir. */
 function moduleBase(rel: string): string {
   const dir = posixDirname(rel);
@@ -119,7 +139,7 @@ export function parseRustUsePath(
 
 export function scanRustImports(content: string): RsImport[] {
   const out: RsImport[] = [];
-  const lines = maskRsBlocks(content).split("\n");
+  const lines = maskRsBlocks(maskRsStrings(content)).split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     let m: RegExpMatchArray | null;
@@ -166,21 +186,31 @@ export interface RsCrate {
   aliases: Map<string, string>;
 }
 
-// Union of [workspace.dependencies] and every [/*-]dependencies table —
-// deps inherited from the workspace workspace=true land in the one file
-// that owns them without knowing Cargo's inheritance rules. Plus the
-// package's own name (integration tests import their crate by name).
+// Union of the package's own name and every dependency table on the file:
+// `dependencies`, `[workspace.dependencies]` (inherited deps land in the
+// root manifest while members declare `dep.workspace = true` — the name is
+// all a scanner needs), and `target.<cfg>.dependencies`. Parsed TOML nests
+// those dotted headers under their parent key, so both levels are walked.
 function readCargoDeps(absPkg: string): Set<string> {
   const deps = new Set<string>();
+  const add = (v: unknown) => {
+    for (const name of Object.keys(v ?? {}))
+      if (/^[A-Za-z0-9_-]+$/.test(name))
+        deps.add(name.toLowerCase().replaceAll("-", "_"));
+  };
   try {
     const toml = Bun.TOML.parse(
       readFileSync(join(absPkg, "Cargo.toml"), "utf-8"),
     ) as Record<string, Record<string, unknown> | undefined>;
     for (const table of Object.keys(toml)) {
       if (!/dependencies$/.test(table)) continue;
-      for (const name of Object.keys(toml[table] ?? {}))
-        if (/^[A-Za-z0-9_-]+$/.test(name))
-          deps.add(name.toLowerCase().replaceAll("-", "_"));
+      add(toml[table]);
+    }
+    // [workspace.dependencies] and [target.'cfg(...)'.dependencies]
+    add(toml.workspace?.dependencies);
+    for (const sub of Object.values(toml.target ?? {}) as unknown[]) {
+      const t = sub as Record<string, unknown> | undefined;
+      if (t && typeof t === "object") add(t.dependencies);
     }
     const self = toml.package?.name;
     if (typeof self === "string")
@@ -200,7 +230,9 @@ function collectCrateAliases(absPkg: string): Map<string, string> {
   for (const base of ["lib.rs", "main.rs"]) {
     let masked: string;
     try {
-      masked = maskRsBlocks(readFileSync(join(absPkg, "src", base), "utf-8"));
+      masked = maskRsBlocks(
+        maskRsStrings(readFileSync(join(absPkg, "src", base), "utf-8")),
+      );
     } catch {
       continue;
     }

@@ -403,6 +403,125 @@ test("testAnalyzeRustCommentsAreNotEdges", () => {
   console.log("  ✓ analyze ignores rust imports inside comments");
 });
 
+// Strings are masked before comments: `"mod fake;"` in a string constant
+// must not declare a module, and a `"use …"` string must not add edges.
+test("testAnalyzeRustStringsAreNotCode", () => {
+  withFixture(
+    {
+      "Cargo.toml": '[package]\nname = "x"\n',
+      "src/lib.rs":
+        'let s = "mod fake;";\nlet t = "use std::io::Write;";\nlet u = r#"pub mod other;";let d = "a//b";\nuse crate::real::Thing;\n',
+      "src/real.rs": "pub struct Thing;\n",
+      "src/fake.rs": "pub fn f() {}\n",
+      "src/other.rs": "pub fn o() {}\n",
+    },
+    (dir) => {
+      const graph = buildGraph(dir);
+      assert.deepEqual(
+        [...(graph.deps.get("src/lib.rs") ?? [])],
+        ["src/real.rs"],
+        "string-carried mod/use must produce no edges",
+      );
+      assert.equal(graph.unresolved, 0);
+      assert.equal(graph.external, 0, "no std edge from a string literal");
+      assert.ok(
+        findOrphan(graph, "src/fake.rs") && findOrphan(graph, "src/other.rs"),
+        "files named only inside strings stay orphans",
+      );
+    },
+  );
+  console.log("  ✓ analyze ignores rust statements inside string literals");
+});
+
+// The ladder tries the longest path first and `dir/mod.rs` alternatives:
+// `crate::lvl::a::b::c` is a deep module file, not an item in `a/b.rs`; a
+// short one-segment import is an item in that file itself (no phantom dir).
+test("testAnalyzeRustDeepLadder", () => {
+  withFixture(
+    {
+      "Cargo.toml": '[package]\nname = "x"\n',
+      "src/lib.rs":
+        "use crate::lvl::a::b::c;\nuse crate::lo::Sub;\nuse crate::mm::n;\n",
+      "src/lvl/a/b/c.rs": "pub fn c() {}\n",
+      "src/lvl/a/b.rs": "pub struct B;\n", // shorter prefixes must not win
+      "src/lo.rs": "pub struct Sub;\n",
+      "src/mm/mod.rs": "pub mod n;\n",
+      "src/mm/n/mod.rs": "pub fn n() {}\n",
+    },
+    (dir) => {
+      const graph = buildGraph(dir);
+      assert.deepEqual(
+        [...(graph.deps.get("src/lib.rs") ?? [])].sort(),
+        ["src/lo.rs", "src/lvl/a/b/c.rs", "src/mm/n/mod.rs"],
+        "c.rs beats b.rs, mm/n/mod.rs is the dir-module file, lo.rs wins for items",
+      );
+      assert.equal(graph.unresolved, 0);
+    },
+  );
+  console.log(
+    "  ✓ analyze ladders rust module paths deepest-first with mod.rs",
+  );
+});
+
+// A sibling workspace crate is not automatically a dependency: without a
+// dep entry its `use` stays unresolvable (never a fabricated internal edge)
+// while its own mod tree still resolves.
+test("testAnalyzeRustSiblingCrateUnresolved", () => {
+  withFixture(
+    {
+      "Cargo.toml": '[workspace]\nmembers = ["service", "libx"]\n',
+      "libx/Cargo.toml": '[package]\nname = "libx"\n',
+      "libx/src/lib.rs": "pub struct Thing;\n",
+      // service declares no libx dependency on purpose
+      "service/Cargo.toml": '[package]\nname = "sv"\n',
+      "service/src/main.rs": "use libx::Thing;\nmod side;\nfn main() {}\n",
+      "service/src/side.rs": "pub fn s() {}\n",
+    },
+    (dir) => {
+      const graph = buildGraph(dir);
+      assert.deepEqual(
+        [...(graph.deps.get("service/src/main.rs") ?? [])],
+        ["service/src/side.rs"],
+        "only the mod declaration is a real edge",
+      );
+      assert.equal(graph.unresolved, 1, "libx::Thing stays unresolved");
+      assert.ok(graph.entries?.has("service/src/main.rs"));
+    },
+  );
+  console.log("  ✓ analyze leaves undeclared sibling crates unresolved");
+});
+
+// Table-form dependencies and manifest-level tables: `[dependencies.x]` is
+// the same as `x = "…"`, `[workspace.dependencies]` lives on the root
+// manifest while members inherit the names via `dep.workspace = true`.
+test("testAnalyzeRustTableFormDeps", () => {
+  withFixture(
+    {
+      "Cargo.toml":
+        '[package]\nname = "cab"\n[dependencies.serde_json]\nversion = "1"\n[workspace.dependencies]\nrand = "0.9"\ntokio = { version = "1" }\n',
+      "src/main.rs":
+        "use serde_json::Value;\nuse rand::rng;\nuse tokio::rt;\nuse crate::inner::Cab;\n",
+      "src/lib.rs": "pub struct Cab;\n",
+      "src/inner.rs": "pub struct Inner;\n",
+    },
+    (dir) => {
+      const graph = buildGraph(dir);
+      assert.deepEqual(
+        [...(graph.deps.get("src/main.rs") ?? [])],
+        ["src/inner.rs"],
+        "crate:: paths still resolve by module, not item re-export",
+      );
+      assert.equal(
+        graph.external,
+        3,
+        "table-form and workspace-level dep names both classify external",
+      );
+      assert.equal(graph.unresolved, 0);
+    },
+  );
+  console.log("  ✓ analyze classifies table-form and workspace rust deps");
+});
+
 function findOrphan(
   graph: ReturnType<typeof buildGraph>,
   file: string,
