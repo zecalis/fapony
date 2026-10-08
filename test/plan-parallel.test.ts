@@ -11,6 +11,7 @@ import {
   pickChunks,
 } from "../src/plan/parallel.js";
 import { initPlanStore } from "../src/plan/store.js";
+import { splitWarns } from "../src/plan/sweep.js";
 import { captureLogs, withFakeFael, withTempRepo } from "./helpers.js";
 
 test("testPickChunksDefaultsToTheFirstOpenChunk", () => {
@@ -19,7 +20,13 @@ test("testPickChunksDefaultsToTheFirstOpenChunk", () => {
     ["- [x] chunk 1 — a (abc1234)", "- [ ] chunk 2 — b", "- [ ] chunk 3 — c"],
     "main",
   );
-  assert.deepEqual(p, { next: 1, wip: [], alongside: [], waitsOn: [] });
+  assert.deepEqual(p, {
+    next: 1,
+    wip: [],
+    waiting: [],
+    alongside: [],
+    waitsOn: [],
+  });
 });
 
 test("testPickChunksSkipsAnotherWorktreesClaim", () => {
@@ -45,6 +52,22 @@ test("testPickChunksSaysWhatTheFirstOpenChunkWaitsOn", () => {
   );
   assert.equal(p.next, -1);
   assert.deepEqual(p.waitsOn, ["1"]);
+});
+
+test("testPickChunksNeverOffersAChunkWaitingOnAPerson", () => {
+  const items = [
+    "- [x] chunk 1 — a (abc1234)",
+    "- [ ] chunk 2 — settings page (wait page approved)",
+    "- [ ] chunk 3 — c",
+    "- [ ] chunk 4 — d (after 1)",
+  ];
+  const p = pickChunks(items, "main");
+  assert.deepEqual(p.waiting, [{ at: 1, why: "page approved" }]);
+  assert.equal(p.next, 3, "3 waits on 2 by default; 4 only needs 1");
+  assert.deepEqual(p.alongside, []);
+  const none = pickChunks(items.slice(0, 3), "main");
+  assert.equal(none.next, -1);
+  assert.deepEqual(none.waitsOn, ["2"]);
 });
 
 const row = (id: string, key: string): MemRow =>
@@ -118,6 +141,55 @@ test("testPlanShowsClaimsAlongsideAndMisfiledHandoff", () => {
           all,
           /⚠ 1 open handoff key\(s\) name no plan .*: plan:gone:handoff/,
         );
+      } finally {
+        process.chdir(prev);
+      }
+    }),
+  );
+});
+
+test("testSplitWarnsOnNestedDuplicateAndUmbrellaChunks", () => {
+  const flat = [
+    "  - [x] pr2a — a (abc1234)",
+    "  - [ ] pr2b — b",
+    "  - [x] pr0 — c (def5678)",
+    "  - [ ] pr0c — d",
+  ];
+  assert.deepEqual(splitWarns(flat), [], "a closed pr0 beside pr0c is fine");
+  assert.deepEqual(splitWarns([]), []);
+  const w = splitWarns([
+    "  - [x] chunk 3a — a (abc1234)",
+    "    - [ ] 3a+ UI — b",
+    "  - [ ] pr2 (closes when pr2a–pr2b are done) — engine",
+    "  - [x] pr2a — x (abc1234)",
+  ]).join("\n");
+  assert.match(w, /1 nested checkbox/);
+  assert.match(w, /open chunk pr2 is kept beside its parts pr2a — /);
+});
+
+test("testPlanListsWaitingChunksApart", () => {
+  withFakeFael(() =>
+    withTempRepo((dir) => {
+      const p = join(dir, ".fapony", "plan");
+      mkdirSync(p, { recursive: true });
+      writeFileSync(
+        join(p, "PLAN-x.md"),
+        "---\nkind: unit\n---\n\n# X\n\n## TL;DR\n- [ ] chunk 1 — page (wait brief approved)\n- [ ] chunk 2 — b (after —)\n",
+      );
+      const prev = process.cwd();
+      process.chdir(dir);
+      try {
+        initPlanStore(dir);
+        const out = captureLogs(() => cmdPlanNext(["PLAN-x.md"]));
+        assert.match(out, /## next\n- \[ \] chunk 2 — b/, out);
+        assert.match(
+          out,
+          /## waiting on a person \(not offered\)\n- chunk 1 — page … — wait: brief approved/,
+          out,
+        );
+        assert.doesNotMatch(out, /## later/);
+        const all = captureLogs(() => cmdPlanNext([]));
+        assert.match(all, /waiting on a person: 1/);
       } finally {
         process.chdir(prev);
       }

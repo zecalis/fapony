@@ -169,11 +169,14 @@ export const planLocation = (
  *  `plan:<name>:chunk-<label>` key carries: real plans name chunks F3 / 3b / u0 /
  *  m1 / D2, not only 1, 2, 3. A label holds a digit, so prose after "chunk"
  *  never reads as one, and markdown around it (`**`, `_`) never leaks in. */
-const LABEL = "[A-Za-z]?\\d[A-Za-z0-9]*";
+// vela names chunks pr0cp / pr2a and writes `pr0 (4ddb64e, #226) — …`: a
+// one-letter-prefix label with the dash right after it read 35 of 171 lines
+// as unlabelled.
+const LABEL = "[A-Za-z]{0,3}\\d[A-Za-z0-9]*";
 export const chunkLabel = (item: string): string | null =>
   new RegExp(`\\bchunk[\\s-]*\\**(${LABEL})`, "i").exec(item)?.[1] ??
   new RegExp(
-    `^\\s*(?:[-*]\\s+(?:\\[[\\sxX~]\\]\\s+)?)?[*_]*(${LABEL})[*_]*\\s+[—–]`,
+    `^\\s*(?:[-*]\\s+(?:\\[[\\sxX~]\\]\\s+)?)?[*_]*(${LABEL})[*_]*(?:\\s+\\([^)]*\\))*\\s+[—–]`,
   ).exec(item)?.[1] ??
   null;
 
@@ -221,6 +224,36 @@ export const tldrWarns = (file: string): string[] => {
       warns.push(
         `open chunk ${chunkLabel(l) ?? `"${l.trim().slice(0, 40)}…"`} carries struck-through text — drop the history, keep what is left to do`,
       );
+  return [...warns, ...splitWarns(firstSectionItems(file).ordered)];
+};
+
+// A split chunk went wrong two ways in vela: `pr2` kept open beside pr2a–pr2c
+// (offered as one more chunk), seven checkboxes nested under `chunk 3b` each
+// read as "3b card —" (no label: offered as unnamed chunks, never targetable).
+// The picker and `plan:x:chunk-<label>` need one flat line per label.
+export const splitWarns = (items: string[]): string[] => {
+  const fix = "split = replace the line with flat siblings Na, Nb, …";
+  const warns: string[] = [];
+  const indent = (l: string) => /^\s*/.exec(l)?.[0].length ?? 0;
+  const top = Math.min(...items.map(indent));
+  const nested = items.filter((l) => indent(l) > top).length;
+  if (nested)
+    warns.push(
+      `${nested} nested checkbox(es) in the TL;DR — the picker reads each as a chunk of its own\n   fix: ${fix}; leftovers are their own [ ] line`,
+    );
+  const labels = items.map((l) => chunkLabel(l)?.toLowerCase() ?? null);
+  items.forEach((l, i) => {
+    const b = labels[i];
+    if (!b || !/^\s*[-*]\s+\[\s\]/.test(l)) return;
+    const parts = labels.filter(
+      (o): o is string =>
+        !!o && o.startsWith(b) && /^[a-z]$/.test(o.slice(b.length)),
+    );
+    if (parts.length)
+      warns.push(
+        `open chunk ${b} is kept beside its parts ${parts.join(", ")} — offered as one more chunk\n   fix: drop the ${b} line if its parts cover it, else rename what is left to the next part`,
+      );
+  });
   return warns;
 };
 

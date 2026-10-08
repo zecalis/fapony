@@ -3,8 +3,11 @@
 //
 // The plan dir is shared across worktrees (a symlinked .fapony/), so a tick or
 // a claim written in one worktree is visible in the other at once — no merge
-// to wait for. Two markers on a TL;DR chunk line carry what a picker needs:
+// to wait for. Three markers on a TL;DR chunk line carry what a picker needs:
 //   (wip <branch>)        a session took this chunk — others skip it
+//   (wait <what>)         a person must act first (a page approved, a sample
+//                         sent) — no session takes it; it still holds the
+//                         chunks after it like any open chunk
 //   (after 2) / (after —) what it waits on; no marker = the chunk before it
 // Defaults keep every existing plan behaving as before: with no markers the
 // first open chunk is next and nothing runs alongside it.
@@ -13,6 +16,9 @@ import type { MemRow } from "../fael.js";
 import { chunkLabel } from "./sweep.js";
 
 const WIP_RE = /\(wip\b\s*([^)]*)\)/i;
+// a chunk waiting on a person read as `next` sent agents to stall on it — in
+// vela 26 open chunks said "รอ … approved" in prose the picker cannot read
+const WAIT_RE = /\(wait\b\s*([^)]*)\)/i;
 const AFTER_RE = /\(after\s+([^)]*)\)/i;
 // ponytail: file names are read from the chunk line only (an extension list,
 // not a parser) — a chunk that names no file can't be checked for overlap.
@@ -24,6 +30,8 @@ export interface Picked {
   next: number;
   /** chunks another session claimed */
   wip: { at: number; branch: string }[];
+  /** chunks marked `(wait …)` — a person acts first, no session takes them */
+  waiting: { at: number; why: string }[];
   /** ready chunks that may run in another worktree, with any shared files */
   alongside: { at: number; shared: string[] }[];
   /** why `next` is -1: the chunk(s) the first open one waits on */
@@ -53,6 +61,7 @@ export function pickChunks(items: string[], branch: string | null): Picked {
   };
 
   const wip: Picked["wip"] = [];
+  const waiting: Picked["waiting"] = [];
   const ready: number[] = [];
   let mine = -1;
   let waitsOn: string[] = [];
@@ -66,6 +75,12 @@ export function pickChunks(items: string[], branch: string | null): Picked {
       else wip.push({ at: i, branch: b || "?" });
       return;
     }
+    const held = WAIT_RE.exec(l);
+    if (held) {
+      waiting.push({ at: i, why: held[1].trim() || "?" });
+      if (!waitsOn.length && !ready.length) waitsOn = [label(l) ?? "?"];
+      return;
+    }
     const w = waits(i);
     if (w.length === 0) ready.push(i);
     else if (!waitsOn.length && !ready.length) waitsOn = w;
@@ -77,6 +92,7 @@ export function pickChunks(items: string[], branch: string | null): Picked {
   return {
     next,
     wip,
+    waiting,
     alongside: ready
       .filter((i) => i !== next)
       .map((at) => ({
@@ -95,7 +111,7 @@ export const claimedChunks = (items: string[]): string[] =>
 // session — an agent wrote `vela:registry:handoff` for plan:vela-registry.
 // Same plan, wrong spelling: strip `plan:`, `:` → `-`, compare names.
 // chunk-<label> has the LABEL shape (k6, 3, 4b) — `workflow:chunk-batching` is a topic
-const HANDOFF_KEY_RE = /^(.+):(handoff|chunk-[a-z]?\d[a-z0-9]*)$/i;
+const HANDOFF_KEY_RE = /^(.+):(handoff|chunk-[a-z]{0,3}\d[a-z0-9]*)$/i;
 const keyPlan = (key: string): string | null => {
   const m = HANDOFF_KEY_RE.exec(key);
   return m
