@@ -440,14 +440,19 @@ test("testPlanBriefPicksAnotherChunkByLabel", () => {
       plan(
         "X",
         "",
-        "- [ ] **chunk F3 — base**\n- [ ] chunk 3b — line\n- [ ] u0 — spike",
+        "- [ ] **chunk F3 — base**\n- [ ] chunk 3b — line\n- [ ] u0 — spike\n- [ ] pr0cp (#12) — page",
       ),
     );
     assert.match(
       run(dir, ["plan:x:chunk-3b"]),
-      /## next\n- \[ \] chunk 3b — line\n\n## later \(2\)\n- chunk F3 — base\n- u0 — spike/,
+      /## next\n- \[ \] chunk 3b — line\n\n## later \(3\)\n- chunk F3 — base\n- u0 — spike\n- pr0cp …/,
     );
     assert.match(run(dir, ["plan:x:chunk-U0"]), /## next\n- \[ \] u0 — spike/);
+    // a 2–3 letter prefix + a paren group before the dash (vela's pr0cp)
+    assert.match(
+      run(dir, ["plan:x:chunk-pr0cp"]),
+      /## next\n- \[ \] pr0cp \(#12\) — page/,
+    );
     // unknown label → the first unchecked chunk, as without a label
     assert.match(run(dir, ["plan:x:chunk-9"]), /## next\n- \[ \] \*\*chunk F3/);
   });
@@ -464,6 +469,11 @@ test("testChunkLabelReadsRealLabels", () => {
     ["u0 — spike", "u0"],
     ["- [x] m1 — money (abc1234)", "m1"],
     ["- [ ] D2 – en dash", "D2"],
+    ["  - [ ] pr0cp — settings page", "pr0cp"],
+    ["- [x] pr0 (4ddb64e, #226) — issuer", "pr0"],
+    ["- [x] i1 (f60d387) (#241) — lines", "i1"],
+    ["- [x] 3b card — nested part, no label", null],
+    ["- [x] done (abc1234) — no digit, no label", null],
     ["- [ ] chunk ten — prose, no label", null],
     ["- [x] done, defer", null],
     ["- [ ] handoff: the mem note — this box", null],
