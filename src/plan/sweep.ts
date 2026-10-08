@@ -173,12 +173,27 @@ export const planLocation = (
 // one-letter-prefix label with the dash right after it read 35 of 171 lines
 // as unlabelled.
 const LABEL = "[A-Za-z]{0,3}\\d[A-Za-z0-9]*";
+// Both forms sit at the line start: "k8 — … after PLAN-vela chunk 6" is k8,
+// never 6.
+const LEAD = "^\\s*(?:[-*]\\s+(?:\\[[\\sxX~]\\]\\s+)?)?[*_]*";
 export const chunkLabel = (item: string): string | null =>
-  new RegExp(`\\bchunk[\\s-]*\\**(${LABEL})`, "i").exec(item)?.[1] ??
-  new RegExp(
-    `^\\s*(?:[-*]\\s+(?:\\[[\\sxX~]\\]\\s+)?)?[*_]*(${LABEL})[*_]*(?:\\s+\\([^)]*\\))*\\s+[—–]`,
-  ).exec(item)?.[1] ??
+  new RegExp(`${LEAD}chunk[\\s-]*\\**(${LABEL})`, "i").exec(item)?.[1] ??
+  new RegExp(`${LEAD}(${LABEL})[*_]*(?:\\s+\\([^)]*\\))*\\s+[—–]`).exec(
+    item,
+  )?.[1] ??
   null;
+
+// `(after 2, vela-jobs:j4)` → ["2", "vela-jobs:j4"]; null = no marker, `—` /
+// `none` = waits on nothing. A bare label names a chunk of this plan only.
+export const afterRefs = (line: string): string[] | null => {
+  const m = /\(after\s+([^)]*)\)/i.exec(line);
+  return m
+    ? m[1]
+        .split(/[,+\s]+/)
+        .map((t) => t.replace(/(^|:)chunk-?/i, "$1").toLowerCase())
+        .filter((t) => t && !/^(—|-|none)$/.test(t))
+    : null;
+};
 
 // The first ## section (the TL;DR), heading line included; "" when the plan
 // has none. Throws on an unreadable file — callers decide what that means.
@@ -195,10 +210,12 @@ const firstSection = (file: string): string => {
 };
 
 // Every session reads the TL;DR, so its size is paid on every run:
-// templates/PLAN.md caps it at 15 lines; the char cap catches 15 lines that
-// each carry a paragraph. A closed chunk is one line + sha (the detail is in
-// the fael handoff); a ~~struck~~ open chunk is history the next session pays
-// to read. Warn-only — callers prefix the plan's name.
+// templates/PLAN.md caps its prose at 15 lines; the char cap catches lines
+// that each carry a paragraph. Chunk lines are not counted against the 15: a
+// plan of 23 chunks (vela) breaks it on ticks alone, with nothing to shrink.
+// A closed chunk is one line + sha (the detail is in the fael handoff); a
+// ~~struck~~ open chunk is history the next session pays to read. Warn-only —
+// callers prefix the plan's name.
 const TLDR_MAX_LINES = 15;
 const TLDR_MAX_CHARS = 4000;
 export const tldrWarns = (file: string): string[] => {
@@ -213,18 +230,50 @@ export const tldrWarns = (file: string): string[] => {
     .slice(1)
     .filter((l) => l.trim() && !/^-{3,}\s*$/.test(l)); // the template's --- rule is not TL;DR
   const chars = lines.join("\n").length;
+  const prose = lines.filter((l) => !/^\s*[-*]\s+\[.\]\s/.test(l)).length;
   const warns =
-    lines.length > TLDR_MAX_LINES || chars > TLDR_MAX_CHARS
+    prose > TLDR_MAX_LINES || chars > TLDR_MAX_CHARS
       ? [
-          `TL;DR is ${lines.length} lines / ${chars} chars (cap ${TLDR_MAX_LINES} lines, ${TLDR_MAX_CHARS} chars) — every session reads it\n   fix: shrink each closed chunk to one line + sha; the detail belongs in the fael handoff`,
+          `TL;DR is ${prose} lines besides chunks / ${chars} chars (cap ${TLDR_MAX_LINES} lines, ${TLDR_MAX_CHARS} chars) — every session reads it\n   fix: shrink each closed chunk to one line + sha; the detail belongs in the fael handoff`,
         ]
       : [];
-  for (const l of firstSectionItems(file).unchecked)
+  const { unchecked, ordered } = firstSectionItems(file);
+  const name = (l: string) => chunkLabel(l) ?? `"${l.trim().slice(0, 40)}…"`;
+  for (const l of unchecked)
     if (l.includes("~~"))
       warns.push(
-        `open chunk ${chunkLabel(l) ?? `"${l.trim().slice(0, 40)}…"`} carries struck-through text — drop the history, keep what is left to do`,
+        `open chunk ${name(l)} carries struck-through text — drop the history, keep what is left to do`,
       );
-  return [...warns, ...splitWarns(firstSectionItems(file).ordered)];
+  return [
+    ...warns,
+    ...afterWarns(file, unchecked, ordered, name),
+    ...splitWarns(ordered),
+  ];
+};
+
+// An (after …) the picker can never meet holds the chunk forever, silently:
+// vela wrote (after 7a) for another plan's 7a and (after j1 + j4 ของ PLAN-x).
+const afterWarns = (
+  file: string,
+  open: string[],
+  all: string[],
+  name: (l: string) => string,
+): string[] => {
+  const labels = new Set(all.map((l) => chunkLabel(l)?.toLowerCase()));
+  const dirs = [dirname(file), doneDir, parkedDir].filter(Boolean);
+  const unmet = (ref: string): boolean => {
+    if (!ref.includes(":")) return !labels.has(ref);
+    const base = `PLAN-${ref.split(":")[0].replace(/^plan-/, "")}.md`;
+    return !dirs.some((d) => existsSync(join(d, base)));
+  };
+  return open.flatMap((l) => {
+    const bad = (afterRefs(l) ?? []).filter(unmet);
+    return bad.length
+      ? [
+          `open chunk ${name(l)}: (after ${bad.join(", ")}) names no chunk of this plan and no plan — it is never offered\n   fix: another plan's chunk is <plan>:<label>, e.g. (after vela-jobs:j4)`,
+        ]
+      : [];
+  });
 };
 
 // A split chunk went wrong two ways in vela: `pr2` kept open beside pr2a–pr2c

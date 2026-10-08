@@ -27,7 +27,7 @@ export const slugify = (s: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-// The TL;DR is 15 lines, hard cap (templates/PLAN.md); a drafted chunk list
+// The TL;DR is 15 lines besides chunk lines (templates/PLAN.md); a drafted chunk list
 // sits under a count the agent produces with the skill — never guessed here.
 function planTemplate(name: string, origName: string): string {
   const anchor = `plan:${name}`;

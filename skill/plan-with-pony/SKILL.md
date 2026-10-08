@@ -206,7 +206,8 @@ spec: SPEC-calendar.md            # if Phase 4 produced one
 ```
 
 **Mark a chunk `(after <n>)` — or `(after —)` — only when it truly does not wait on the chunk
-before it.** No marker = waits on the previous chunk. That one fact is what lets a second worktree
+before it.** No marker = waits on the previous chunk. A bare label names a chunk of this plan
+only; another plan's chunk carries its plan name: `(after vela-jobs:j4)`. That one fact is what lets a second worktree
 take a chunk while the first is in flight: `fapony plan` lists it under "can run alongside" and
 warns when it names a file the chunk in progress names. Don't pre-assign chunks to PRs or
 worktrees — that is judged when the work starts. A chunk that cannot start until a person acts
@@ -217,7 +218,7 @@ Only write the frontmatter keys you know — a new plan usually has `kind: unit`
 `blocks` goes in whenever the conversation said "this has to come before X": frontmatter is the
 only place that ordering stays true.
 
-**The TL;DR is 15 lines, hard cap, and is the only part that changes while the work is in flight**
+**The TL;DR is 15 lines besides its chunk lines (one line each), hard cap, and is the only part that changes while the work is in flight**
 (tick a box, stamp a short sha). Everything below it is the agreement. A TL;DR allowed to grow
 becomes a second copy of the plan, and then neither copy can be trusted. `fapony plan` reads the
 checkboxes in the **first `##` section only**, so section 6 stays detail rather than status.

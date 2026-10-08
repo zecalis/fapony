@@ -66,7 +66,7 @@ anything longer belongs in the spec file, not here.
 ```
 
 **Two rules that keep the file cheap to read:**
-- **The TL;DR is 15 lines, hard cap.** It is the only part that changes while the work is in
+- **The TL;DR is 15 lines besides its chunk lines, hard cap** (one line per chunk, whole TL;DR under 4000 chars). It is the only part that changes while the work is in
   flight (tick a box, stamp a sha); everything below it is the agreement and changes only when
   scope changes. That contract is what lets a reader trust the first 40 lines instead of pulling
   100KB into context.

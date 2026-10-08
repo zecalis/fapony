@@ -11,15 +11,19 @@
 //   (after 2) / (after —) what it waits on; no marker = the chunk before it
 // Defaults keep every existing plan behaving as before: with no markers the
 // first open chunk is next and nothing runs alongside it.
+// A bare label in (after …) names a chunk of this plan; another plan's chunk
+// carries that plan's name: (after vela-jobs:j4).
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { MemRow } from "../fael.js";
-import { chunkLabel } from "./sweep.js";
+import { doneDir, planDir } from "./store.js";
+import { afterRefs, chunkLabel, firstSectionItems } from "./sweep.js";
 
 const WIP_RE = /\(wip\b\s*([^)]*)\)/i;
 // a chunk waiting on a person read as `next` sent agents to stall on it — in
 // vela 26 open chunks said "รอ … approved" in prose the picker cannot read
 const WAIT_RE = /\(wait\b\s*([^)]*)\)/i;
-const AFTER_RE = /\(after\s+([^)]*)\)/i;
 // ponytail: file names are read from the chunk line only (an extension list,
 // not a parser) — a chunk that names no file can't be checked for overlap.
 const FILE_RE =
@@ -40,6 +44,20 @@ export interface Picked {
 
 const files = (s: string): string[] => [...new Set(s.match(FILE_RE) ?? [])];
 
+// `vela-jobs:j4` — met once that plan ticks j4 or ships to done/. A parked or
+// missing plan never meets it (tldrWarns names a missing one).
+export const closedInPlan = (ref: string): boolean => {
+  const [name, lbl] = ref.split(":");
+  const base = `PLAN-${name.replace(/^plan-/, "")}.md`;
+  if (doneDir && existsSync(join(doneDir, base))) return true;
+  return (
+    !!planDir &&
+    firstSectionItems(join(planDir, base)).checked.some(
+      (l) => chunkLabel(l)?.toLowerCase() === lbl,
+    )
+  );
+};
+
 /** `items` = the TL;DR checkbox lines in order, `- [ ]`/`- [x]` kept. */
 export function pickChunks(items: string[], branch: string | null): Picked {
   const open = (l: string) => /^\s*[-*]\s+\[\s\]/.test(l);
@@ -51,13 +69,12 @@ export function pickChunks(items: string[], branch: string | null): Picked {
       .filter(Boolean),
   );
   const waits = (i: number): string[] => {
-    const m = AFTER_RE.exec(items[i]);
-    if (!m)
+    const refs = afterRefs(items[i]);
+    if (!refs)
       return i > 0 && open(items[i - 1]) ? [label(items[i - 1]) ?? "?"] : [];
-    return m[1]
-      .split(/[,\s]+/)
-      .map((t) => t.replace(/^chunk-?/i, "").toLowerCase())
-      .filter((t) => t && !/^(—|-|none)$/.test(t) && !closed.has(t));
+    return refs.filter((t) =>
+      t.includes(":") ? !closedInPlan(t) : !closed.has(t),
+    );
   };
 
   const wip: Picked["wip"] = [];

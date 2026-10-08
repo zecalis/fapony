@@ -11,7 +11,7 @@ import {
   pickChunks,
 } from "../src/plan/parallel.js";
 import { initPlanStore } from "../src/plan/store.js";
-import { splitWarns } from "../src/plan/sweep.js";
+import { splitWarns, tldrWarns } from "../src/plan/sweep.js";
 import { captureLogs, withFakeFael, withTempRepo } from "./helpers.js";
 
 test("testPickChunksDefaultsToTheFirstOpenChunk", () => {
@@ -68,6 +68,42 @@ test("testPickChunksNeverOffersAChunkWaitingOnAPerson", () => {
   const none = pickChunks(items.slice(0, 3), "main");
   assert.equal(none.next, -1);
   assert.deepEqual(none.waitsOn, ["2"]);
+});
+
+test("testAfterAnotherPlansChunkWaitsUntilThatPlanTicksIt", () => {
+  // vela: j2b (after 7a) looked 7a up in its own plan and never ran
+  withTempRepo((dir) => {
+    const p = join(dir, ".fapony", "plan");
+    mkdirSync(p, { recursive: true });
+    const jobs = (tick: string) =>
+      writeFileSync(
+        join(p, "PLAN-vela-jobs.md"),
+        `---\nkind: unit\n---\n\n# J\n\n## TL;DR\n- [${tick}] j4 — dirty keys\n`,
+      );
+    jobs(" ");
+    const x = join(p, "PLAN-x.md");
+    writeFileSync(
+      x,
+      "---\nkind: unit\n---\n\n# X\n\n## TL;DR\n- [ ] m3 — fifo (after vela-jobs:j4)\n- [ ] m4 — b (after 7a)\n- [ ] m5 — c (after gone:j1)\n",
+    );
+    const prev = process.cwd();
+    process.chdir(dir);
+    try {
+      initPlanStore(dir);
+      const items = ["- [ ] m3 — fifo (after vela-jobs:j4)"];
+      assert.equal(pickChunks(items, "main").next, -1);
+      assert.deepEqual(pickChunks(items, "main").waitsOn, ["vela-jobs:j4"]);
+      jobs("x");
+      assert.equal(pickChunks(items, "main").next, 0);
+      // an (after …) nothing can meet is said, not left to stall
+      const w = tldrWarns(x).join("\n");
+      assert.match(w, /open chunk m4: \(after 7a\) names no chunk/);
+      assert.match(w, /open chunk m5: \(after gone:j1\)/);
+      assert.doesNotMatch(w, /m3/);
+    } finally {
+      process.chdir(prev);
+    }
+  });
 });
 
 const row = (id: string, key: string): MemRow =>
