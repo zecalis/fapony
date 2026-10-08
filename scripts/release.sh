@@ -69,12 +69,9 @@ done
 gh run watch "$run" --exit-status >/dev/null || { echo "release: publish.yml run $run failed — gh run rerun $run --failed" >&2; exit 1; }
 echo "publish.yml $run green"
 
-# registry lag has no fixed length (usually seconds) — poll up to 5 min instead of guessing a sleep
-for _ in $(seq 30); do
-  [ "$(npm view "$pkg@$new" version 2>/dev/null)" = "$new" ] && break
-  sleep 10
-done
-
-# fapony runs on bun, so bun holds the global install
-bun add -g "$pkg@$new" >/dev/null && echo "local fapony -> $new ($(fapony --version))" \
-  || echo "release: npm has no $new after 5 min — run: bun add -g $pkg@$new" >&2
+# npm holds a fresh version "being processed" for minutes after publish (v0.15.1:
+# 6+ min, no way to skip it) — install this machine from the tag, same commit.
+# remove first: over an existing install bun keeps the old lockfile resolution.
+bun remove -g "$pkg" >/dev/null 2>&1 || true
+bun add -g "github:zecalis/fapony#v$new" >/dev/null && echo "local fapony -> $new ($(fapony --version))" \
+  || echo "release: local install failed — run: bun add -g github:zecalis/fapony#v$new" >&2
