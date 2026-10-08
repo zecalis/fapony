@@ -81,12 +81,17 @@ test("testMisfiledAndOrphanHandoffKeys", () => {
     row("d", "plan:gone:chunk-3"), // names no plan
     { ...row("e", "plan:handoff"), kind: "decision" }, // a record, not a handoff
     { ...row("f", "vela:registry:chunk-2"), kind: "decision" },
+    row("g", "vela-print:chunk-pr2a"), // 2-letter label, misfiled
   ];
   assert.deepEqual(
     misfiledHandoffs(rows, "vela-registry").map((r) => r.id),
     ["a"],
   );
-  assert.deepEqual(orphanHandoffKeys(rows, ["vela-registry"]), [
+  assert.deepEqual(
+    misfiledHandoffs(rows, "vela-print").map((r) => r.id),
+    ["g"],
+  );
+  assert.deepEqual(orphanHandoffKeys(rows, ["vela-registry", "vela-print"]), [
     "plan:gone:chunk-3",
   ]);
 });
