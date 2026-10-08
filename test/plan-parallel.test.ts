@@ -225,12 +225,12 @@ test("testPlanListsWaitingChunksApart", () => {
         assert.match(out, /## next\n- \[ \] chunk 2 — b/, out);
         assert.match(
           out,
-          /## waiting on a person \(not offered\)\n- chunk 1 — page … — wait: brief approved/,
+          /## waiting \(not offered\)\n- chunk 1 — page … — wait: brief approved/,
           out,
         );
         assert.doesNotMatch(out, /## later/);
         const all = captureLogs(() => cmdPlanNext([]));
-        assert.match(all, /waiting on a person: 1/);
+        assert.match(all, /waiting: 1/);
       } finally {
         process.chdir(prev);
       }

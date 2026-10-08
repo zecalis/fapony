@@ -211,7 +211,7 @@ only; another plan's chunk carries its plan name: `(after vela-jobs:j4)`. That o
 take a chunk while the first is in flight: `fapony plan` lists it under "can run alongside" and
 warns when it names a file the chunk in progress names. Don't pre-assign chunks to PRs or
 worktrees — that is judged when the work starts. A chunk that cannot start until a person acts
-(a page brief `approved`, a sample sent) carries `(wait <what>)` — written as prose, `fapony plan`
+or data accrues (a page brief `approved`, ≥30 samples logged) carries `(wait <what>)` — written as prose, `fapony plan`
 offers it as next and the agent stalls on it.
 
 Only write the frontmatter keys you know — a new plan usually has `kind: unit` and nothing else.

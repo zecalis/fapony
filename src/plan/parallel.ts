@@ -5,8 +5,8 @@
 // a claim written in one worktree is visible in the other at once — no merge
 // to wait for. Three markers on a TL;DR chunk line carry what a picker needs:
 //   (wip <branch>)        a session took this chunk — others skip it
-//   (wait <what>)         a person must act first (a page approved, a sample
-//                         sent) — no session takes it; it still holds the
+//   (wait <what>)         a person or data comes first (a page approved, ≥30
+//                         samples logged) — no session takes it; it still holds the
 //                         chunks after it like any open chunk
 //   (after 2) / (after —) what it waits on; no marker = the chunk before it
 // Defaults keep every existing plan behaving as before: with no markers the
@@ -22,7 +22,8 @@ import { afterRefs, chunkLabel, firstSectionItems } from "./sweep.js";
 
 const WIP_RE = /\(wip\b\s*([^)]*)\)/i;
 // a chunk waiting on a person read as `next` sent agents to stall on it — in
-// vela 26 open chunks said "รอ … approved" in prose the picker cannot read
+// vela 26 open chunks said "รอ … approved" in prose the picker cannot read;
+// in fael the waits are data (≥30 pairs, arm data), not people
 const WAIT_RE = /\(wait\b\s*([^)]*)\)/i;
 // ponytail: file names are read from the chunk line only (an extension list,
 // not a parser) — a chunk that names no file can't be checked for overlap.
@@ -34,7 +35,7 @@ export interface Picked {
   next: number;
   /** chunks another session claimed */
   wip: { at: number; branch: string }[];
-  /** chunks marked `(wait …)` — a person acts first, no session takes them */
+  /** chunks marked `(wait …)` — a person or data comes first, no session takes them */
   waiting: { at: number; why: string }[];
   /** ready chunks that may run in another worktree, with any shared files */
   alongside: { at: number; shared: string[] }[];

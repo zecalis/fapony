@@ -55,7 +55,7 @@ const SPEC_TITLE_MAX = 50;
 export const chunkRules = (anchor: string): string[] => [
   "batching: one session = one branch = one squash-merged PR, one commit per chunk · add the next chunk only while the PR stays reviewable in one sitting, never past 3 · a chunk gets its own PR when it changes a DB schema/migration or persisted format, touches auth/permissions/security or money logic, changes a public API/CLI contract, or needs a design review · close each chunk fully (tick + handoff note + commit) before the next; stop at anything that needs a human decision · a session starts a fresh branch from origin/main — never push onto a branch whose PR already merged (`gh pr view --json state`) · PR title follows the repo's commit style (same shape as the step commits); the body names the plan and its chunks (`Plan: PLAN-x chunk 2–3`) · a chunk that must build on an unmerged branch is stacked (PR base = that branch; once it merges: `git rebase --onto origin/main <lower> <upper>`)",
   `parallel: starting a chunk, append \`(wip <branch>)\` to its TL;DR line — the plan dir is shared, so another worktree's \`fapony plan\` skips it at once · a chunk runs alongside another only when \`fapony plan\` lists it under "can run alongside" (its \`(after <n>)\` / \`(after —)\` is met) and shares no file with the chunk in progress · the planner writes \`(after …)\` on a chunk line only when it truly does not wait on the chunk before it · each parallel chunk: own worktree, own branch, own PR`,
-  `changing the plan: a chunk too big for one PR is split in place — its line becomes flat siblings \`Na\`, \`Nb\` (same indent, no umbrella \`N\` line kept, no nested checkboxes) · a chunk a person must act on first (a page approved, a sample sent) gets \`(wait <what>)\` — \`fapony plan\` stops offering it; drop the marker once it is done · what a closed chunk left undone is a new \`[ ]\` line, or \`fael add issue … --files <f>,${anchor}\` when it is not part of "Done when" — never prose inside the tick · work done outside the plan is not a chunk: \`fael add note … --files <f>,${anchor}\` so the next session sees it · re-scoping or re-ordering chunks is the dev's call — ask`,
+  `changing the plan: a chunk too big for one PR is split in place — its line becomes flat siblings \`Na\`, \`Nb\` (same indent, no umbrella \`N\` line kept, no nested checkboxes) · a chunk that waits on a person or on data (a page approved, ≥30 samples logged) gets \`(wait <what>)\` — \`fapony plan\` stops offering it; drop the marker once it is done · what a closed chunk left undone is a new \`[ ]\` line, or \`fael add issue … --files <f>,${anchor}\` when it is not part of "Done when" — never prose inside the tick · work done outside the plan is not a chunk: \`fael add note … --files <f>,${anchor}\` so the next session sees it · re-scoping or re-ordering chunks is the dev's call — ask`,
   `closing a step: tick TL;DR with sha and drop its \`(wip …)\` — the tick stays one line (\`label — what — sha (#N)\`; detail goes in the handoff note) · .fapony/ is gitignored, so a tick or \`(#N)\` edit is never committed (a repo that tracks .fapony/ pays a commit per edit: gitignore it) · a chunk with no commit (a measurement) cites \`(fael:<decision id>)\` instead, a dropped chunk is \`[~]\` + the decision saying why · \`git commit\` files only · \`fael add note "<what the next chunk must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note; a chunk run in parallel with another open chunk of this plan, in another worktree, writes \`--key ${anchor}:chunk-<label>\` instead) · after \`gh pr create\`, append \`(#N)\` to that tick (a squash rewrites the sha, \`(#N)\` survives it)`,
 ];
 
@@ -288,7 +288,7 @@ function showPlan(file: string, chunk: string | null): void {
     }
     const waiting = chunk ? [] : pick.waiting;
     if (waiting.length) {
-      console.log(`\n## waiting on a person (not offered)`);
+      console.log(`\n## waiting (not offered)`);
       for (const w of waiting)
         console.log(`- ${headline(unchecked[toAt(w.at)])} — wait: ${w.why}`);
     }
@@ -416,7 +416,7 @@ function showAll(): void {
       );
     if (pick.waiting.length)
       console.log(
-        `  waiting on a person: ${pick.waiting.map((w) => chunkLabel(ordered[w.at]) ?? "?").join(", ")}`,
+        `  waiting: ${pick.waiting.map((w) => chunkLabel(ordered[w.at]) ?? "?").join(", ")}`,
       );
     if (pick.next >= 0)
       console.log(
