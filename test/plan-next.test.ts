@@ -477,6 +477,9 @@ test("testChunkLabelReadsRealLabels", () => {
     ["- [ ] chunk ten — prose, no label", null],
     ["- [x] done, defer", null],
     ["- [ ] handoff: the mem note — this box", null],
+    // "chunk N" in the text is a reference, not this line's label
+    ["- [ ] k8 (wait loop) — after the revision of PLAN-vela chunk 6", "k8"],
+    ["- [ ] fix what chunk 6 left", null],
   ];
   for (const [line, want] of cases) assert.equal(chunkLabel(line), want, line);
 });
@@ -650,13 +653,17 @@ test("testTldrWarnsOnSizeAndStruckOpenChunks", () => {
       { length: 16 },
       (_, i) => `- [ ] chunk ${i + 1} — x`,
     );
+    // vela: 23 one-line chunks — nothing to shrink, so no line warn
     writeFileSync(long, plan("Long", "", ticks.join("\n")));
-    assert.match(tldrWarns(long).join("\n"), /TL;DR is 16 lines/);
+    assert.deepStrictEqual(tldrWarns(long), []);
+    const prose = ticks.map((t) => t.replace(/^- \[ \] /, "note "));
+    writeFileSync(long, plan("Long", "", prose.join("\n")));
+    assert.match(tldrWarns(long).join("\n"), /TL;DR is 16 lines besides/);
 
     const ruled = join(p, "PLAN-ruled.md"); // 15 lines + the template's --- rule
     writeFileSync(
       ruled,
-      plan("R", "", `${ticks.slice(0, 15).join("\n")}\n\n---\n\n## 1. Goal\ng`),
+      plan("R", "", `${prose.slice(0, 15).join("\n")}\n\n---\n\n## 1. Goal\ng`),
     );
     assert.deepStrictEqual(tldrWarns(ruled), []);
 
