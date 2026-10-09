@@ -1,8 +1,7 @@
 // src/core/hint-log.ts — hint-fire log path + write + types (pure, no feature imports)
 //
 // Extracted from src/hook.ts (PLAN-lib-layer chunk 2a) to break the
-// digest→hook coupling. computeHintImpact stays in hook.ts because it
-// imports debtForFile (feature layer).
+// digest→hook coupling. computeHintImpact lives in adapters/hooks/.
 
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -78,6 +77,5 @@ export interface HintImpact {
     "commit-block": number;
     "bug-block": number;
   };
-  debt: { shown: number; resolved: number; unknown: number };
   window: string | null;
 }

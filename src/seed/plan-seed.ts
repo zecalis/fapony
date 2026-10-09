@@ -231,8 +231,8 @@ function openChunkOverlaps(
 // seeded pointer at it teaches the reader to cite what cannot be cited.
 // computeModelFit() itself stays — `fapony stats` reads it.
 
-// One line per scope file naming its exports — `src/debt/scan.ts —
-// scanDebt() · DebtHit`. Files with no exports (or unreadable) are skipped:
+// One line per scope file naming its exports — `src/plan/sweep.ts —
+// cmdPlanSweep() · …`. Files with no exports (or unreadable) are skipped:
 // a pointer lists what is there, not what is not. Sorted for determinism.
 function renderExistingInScope(
   roots: string[],

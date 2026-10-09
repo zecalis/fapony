@@ -72,12 +72,6 @@ session left in fael — instead of dragging the old transcript along.
 **Lookups instead of whole-file reads.** `fapony review-seed --files <f>` gives exports with line
 numbers and every importer for roughly a thirtieth of the tokens reading those files costs.
 
-**Convention debt (frozen).** `fapony debt` answers the question nothing else does: *we decided this six
-months ago — how far along is the move?* ESLint says this line is wrong; nothing says 11 of 47
-files have migrated. Dead code and duplication it deliberately leaves to knip and friends —
-they already do that better. It is frozen: no repo we run declares a convention (checkers enforce them
-from day one), so it gets no new work and is slated for deletion on 2026-10-31 unless one does.
-
 ## What it cost — usage
 
 fapony reads the session logs Claude Code, Codex, OpenCode and ZCode already write, and puts them
@@ -189,7 +183,7 @@ Read-only and deterministic — none of it writes anything.
 
 ### Skills
 
-fapony ships six portable skills, each as `skill/<name>/SKILL.md` — the layout Claude Code
+fapony ships five portable skills, each as `skill/<name>/SKILL.md` — the layout Claude Code
 expects, so a client can symlink the directory rather than copy the file:
 
 | Skill | Purpose | Trigger |
@@ -197,7 +191,6 @@ expects, so a client can symlink the directory rather than copy the file:
 | `skill/plan-with-pony/` | Draft plan + spec from "what's in your head" via conversation | `/plan-with-pony` |
 | `skill/review-pony/` | Review as verification: scope facts before (`review-seed`), a fael row after when findings survive | `/review-pony` |
 | `skill/debug-pony/` | Debug as a ledger: read past fael rows first, repro → narrow → disprove, close with cause, what was ruled out, and the guard | `/debug-pony` |
-| `skill/define-convention/` | Turn a not-yet-migrated pattern into a tracked convention (interview + dry-run `debt`) | `/define-convention` |
 | `skill/move-to-done/` | Archive a shipped PLAN into .fapony/done/ | `/move-to-done` |
 | `skill/git-ship/` | Push branch, open PR with drafted title/body, merge, reset branch onto base | `/ship`, `/pr` |
 
@@ -273,7 +266,6 @@ fapony plan-seed <name> [--spec] [--scope <path>[,<path>]]...  # write PLAN (+SP
 fapony hook-mv-guard                       # deny raw git mv of plan files into done/
 
 # frozen ledger (reads history only — the grading tool left the MCP surface in 2026-09)
-fapony debt [--id a,b] [--where <path>]    # files not yet migrated to a declared convention (frozen — delete 2026-10-31)
 fapony stats [--mode verdict [--regime code|fix|review|plan|inquiry|test]]  # KPIs from old graded runs
 fapony report <run-id>                     # verification report for a run
 fapony report-web [file]                   # static HTML report page
