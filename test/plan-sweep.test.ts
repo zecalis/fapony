@@ -147,7 +147,7 @@ test("testPlanSweepApplyEndToEnd", () => {
 
     const proc = Bun.spawnSync(
       ["bun", FAPONY, "plan", "sweep", "PLAN-a.md", "--apply"],
-      { cwd: dir, stdout: "pipe", stderr: "pipe" },
+      { cwd: dir, env: process.env, stdout: "pipe", stderr: "pipe" },
     );
     const out = proc.stdout.toString() + proc.stderr.toString();
     assert.equal(proc.exitCode, 0, `plan-sweep must succeed:\n${out}`);
@@ -212,6 +212,7 @@ test("testPlanSweepMovesSpecWithTheLastPlanCitingIt", () => {
         ["bun", FAPONY, "plan", "sweep", name, "--apply"],
         {
           cwd: dir,
+          env: process.env,
           stdout: "pipe",
           stderr: "pipe",
         },
@@ -265,7 +266,7 @@ test("testPlanSweepAcceptsRepoRelativePath", () => {
     );
     const proc = Bun.spawnSync(
       ["bun", FAPONY, "plan", "sweep", ".fapony/plan/PLAN-a.md", "--apply"],
-      { cwd: dir, stdout: "pipe", stderr: "pipe" },
+      { cwd: dir, env: process.env, stdout: "pipe", stderr: "pipe" },
     );
     const out = proc.stdout.toString() + proc.stderr.toString();
     assert.equal(proc.exitCode, 0, `repo-relative path must resolve:\n${out}`);
@@ -320,6 +321,7 @@ test("testPlanSweepSupersededUntrackedPlan", () => {
     const sweep = (...args: string[]) => {
       const p = Bun.spawnSync(["bun", FAPONY, "plan", "sweep", ...args], {
         cwd: dir,
+        env: process.env,
         stdout: "pipe",
         stderr: "pipe",
       });
