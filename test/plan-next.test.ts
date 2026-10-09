@@ -729,6 +729,8 @@ test("testPlanBlockedOffersNoNext", () => {
     const one = run(dir, ["PLAN-forms.md"]);
     assert.match(one, /⚠ blocked \(0\/1 chunks\) — blocked_by: real forms/);
     assert.ok(!/## next|## closing/.test(one), one);
+    // what unblocking needs stays: the open chunks are listed, not offered
+    assert.match(one, /## later \(1\)\n- chunk 1 — form_template/);
   });
 });
 

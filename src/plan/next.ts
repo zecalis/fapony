@@ -275,14 +275,14 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
     if (why) console.log(`parked_because: ${blockedByShort(why)}`);
     return;
   }
-  // blocked = a dependency stands in the way: no chunk to start either
+  // blocked = a dependency stands in the way: no next, no rules — but spec,
+  // open chunks and handoff stay, they are what unblocking needs
   const fm = parsePlanFrontmatter(file);
-  if (fm.status === "blocked") {
+  const blocked = fm.status === "blocked";
+  if (blocked)
     console.log(
       `⚠ blocked (${tally(items)}) — blocked_by: ${blockedByShort(fm.blockedByRaw)}; no chunk is offered. Unblock: drop \`status: blocked\` from the frontmatter`,
     );
-    return;
-  }
   const spec = specFile(file);
   if (spec) console.log(specLine(spec));
   // `plan:x:chunk-<label>` picks that chunk as "next"; else the picker: the
@@ -291,22 +291,25 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
   const pick = pickChunks(ordered, currentBranch());
   const openLines = ordered.filter(isOpen);
   const toAt = (i: number) => (i < 0 ? -1 : openLines.indexOf(ordered[i]));
-  const at = chunk
-    ? Math.max(
-        unchecked.findIndex(
-          (c) => chunkLabel(c)?.toLowerCase() === chunk.toLowerCase(),
-        ),
-        0,
-      )
-    : toAt(pick.next);
+  const at = blocked
+    ? -1
+    : chunk
+      ? Math.max(
+          unchecked.findIndex(
+            (c) => chunkLabel(c)?.toLowerCase() === chunk.toLowerCase(),
+          ),
+          0,
+        )
+      : toAt(pick.next);
   if (spec?.file && unchecked[at])
     for (const ref of specRefs(spec.file, unchecked[at])) console.log(ref);
   if (unchecked.length) {
     const name = planKeyName(file) ?? "<name>";
     const elsewhere = chunk ? [] : pick.wip.map((w) => toAt(w.at));
-    const alongside = chunk ? [] : pick.alongside;
+    const alongside = chunk || blocked ? [] : pick.alongside;
     if (at >= 0) console.log(`\n## next\n- [ ] ${unchecked[at]}`);
-    else console.log(`\n## next\n(none ready — ${noneReady(pick, ordered)})`);
+    else if (!blocked)
+      console.log(`\n## next\n(none ready — ${noneReady(pick, ordered)})`);
     if (elsewhere.length) {
       console.log(`\n## in progress in another worktree`);
       for (const [i, w] of pick.wip.entries())
@@ -331,7 +334,8 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
     if (
       waiting.length &&
       waiting.length === openLines.length &&
-      fm.kind !== "tracker"
+      fm.kind !== "tracker" &&
+      !blocked
     )
       console.log(
         `⚠ every open chunk waits — park the plan (fapony plan park ${basename(file)} --apply) or make it \`kind: tracker\` (your call)`,
