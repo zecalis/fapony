@@ -25,7 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cmdPlanSeed } from "../src/seed/plan-seed.js";
 import { renderSeed } from "../src/seed/review-seed.js";
-import { captureLogs, withTempRepo, withTmpDb } from "./helpers.js";
+import { captureLogs } from "./helpers.js";
 
 const root = join(import.meta.dir, "..");
 const read = (rel: string): string => readFileSync(join(root, rel), "utf8");
