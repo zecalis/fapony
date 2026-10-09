@@ -5,7 +5,7 @@
 // argv routing.
 
 import { cmdAnalyze } from "../analyze/index.js";
-import { renderUsage, suggestCommand } from "../commands.js";
+import { COMMANDS, renderUsage, suggestCommand } from "../commands.js";
 import { cmdDigest } from "../digest/cli.js";
 import { cmdInit } from "../init.js";
 import { cmdInstall } from "../install.js";
@@ -22,6 +22,8 @@ import { cmdUpdate, readVersion } from "../update.js";
 import { cmdUsageScan, cmdUsageWeb } from "../usage/index.js";
 import { cmdHookMvGuard } from "./hooks/index.js";
 
+const OWN_HELP = new Set(["plan", "lint-baseline", "review-seed", "digest"]);
+
 export async function cliMain(): Promise<void> {
   const [cmd, ...a] = process.argv.slice(2);
 
@@ -32,6 +34,18 @@ export async function cliMain(): Promise<void> {
 
   if (cmd === "--version" || cmd === "-v") {
     console.log(readVersion());
+    return;
+  }
+
+  // Only these parse their own --help. The rest ignore an unknown flag and
+  // run (update, install, setup) or misread it as an argument — answer here.
+  const info = COMMANDS.find((c) => c.name === cmd);
+  if (
+    info &&
+    !OWN_HELP.has(cmd) &&
+    (a.includes("--help") || a.includes("-h"))
+  ) {
+    console.log(`fapony ${cmd} — ${info.summary}`);
     return;
   }
 
