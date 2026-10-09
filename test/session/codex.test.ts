@@ -171,3 +171,68 @@ test("testReadCodexUsageDropsConsecutiveIdenticalRecords", () => {
   });
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("testReadCodexUsageFallsBackToTokenCount", () => {
+  const dir = mkdtempSync(join(tmpdir(), "fapony-codex-tokencount-"));
+  const sessionsDir = join(dir, "2026", "10", "09");
+  mkdirSync(sessionsDir, { recursive: true });
+
+  const meta = (id: string) =>
+    JSON.stringify({
+      timestamp: "2026-10-09T10:00:00.000Z",
+      type: "session_meta",
+      payload: { id, cwd: "/tmp/wt", model: "gpt-5.6-terra" },
+    });
+  const count = (ts: string, total: number, last: number) =>
+    JSON.stringify({
+      timestamp: ts,
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: {
+          total_token_usage: { input_tokens: total, output_tokens: 1 },
+          last_token_usage: { input_tokens: last, output_tokens: 1 },
+        },
+      },
+    });
+  // Only token_count events (most real rollouts): null info before the
+  // first call, and an unchanged running total is a re-emission.
+  writeFileSync(
+    join(sessionsDir, "rollout-count-only.jsonl"),
+    [
+      meta("a"),
+      JSON.stringify({
+        type: "event_msg",
+        payload: { type: "token_count", info: null },
+      }),
+      count("2026-10-09T10:00:01.000Z", 100, 100),
+      count("2026-10-09T10:00:02.000Z", 100, 100),
+      count("2026-10-09T10:00:03.000Z", 130, 30),
+    ].join("\n"),
+  );
+  // Both kinds: records win, token_count is not added on top.
+  writeFileSync(
+    join(sessionsDir, "rollout-both.jsonl"),
+    [
+      meta("b"),
+      count("2026-10-09T10:00:01.000Z", 7, 7),
+      JSON.stringify({
+        timestamp: "2026-10-09T10:00:01.000Z",
+        type: "token_usage_record",
+        payload: { session_id: "b", usage: { input_tokens: 7 } },
+      }),
+    ].join("\n"),
+  );
+
+  withEnv("FAPONY_CODEX_SESSIONS_DIR", dir, () => {
+    const result = readCodexUsage("/tmp/wt", undefined, undefined, true);
+    assert.equal(result.session_count, 2);
+    assert.equal(result.total_tokens_input, 100 + 30 + 7);
+    assert.equal(result.total_tokens_output, 2);
+    assert.equal(result.detail!.steps, 3);
+    console.log(
+      "  ✓ readCodexUsage counts token_count when a rollout has no token_usage_record",
+    );
+  });
+  rmSync(dir, { recursive: true, force: true });
+});
