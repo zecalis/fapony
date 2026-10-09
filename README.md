@@ -4,7 +4,10 @@
 
 # fapony
 
-[![npm](https://img.shields.io/npm/v/@zecalis%2Ffapony.svg)](https://www.npmjs.com/package/@zecalis/fapony) [![GitHub](https://img.shields.io/github/stars/zecalis/fapony.svg)](https://github.com/zecalis/fapony)
+[![npm](https://img.shields.io/npm/v/@zecalis/fapony.svg)](https://www.npmjs.com/package/@zecalis/fapony)
+[![release](https://img.shields.io/github/v/tag/zecalis/fapony.svg?label=release)](https://github.com/zecalis/fapony/tags)
+[![CI](https://github.com/zecalis/fapony/actions/workflows/ci.yml/badge.svg)](https://github.com/zecalis/fapony/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **The dev workflow for writing code with agents** — plans cut into one-session chunks, lookups
 that cost a fraction of reading the files, and what it all cost in tokens. It is one developer's daily flow made into commands; adopting fapony means adopting that
@@ -183,7 +186,7 @@ Read-only and deterministic — none of it writes anything.
 
 ### Skills
 
-fapony ships five portable skills, each as `skill/<name>/SKILL.md` — the layout Claude Code
+fapony ships these portable skills, each as `skill/<name>/SKILL.md` — the layout Claude Code
 expects, so a client can symlink the directory rather than copy the file:
 
 | Skill | Purpose | Trigger |

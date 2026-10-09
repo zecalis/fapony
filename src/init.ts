@@ -91,7 +91,7 @@ export function initProject(targetPath: string, config?: Config): void {
   mkdirSync(faponyDir, { recursive: true });
   writeFileSync(join(faponyDir, "README"), FAPONY_README);
 
-  // --- evidence.json (verification_report allowlist — see src/mcp/evidence.ts) ---
+  // --- evidence.json (verification_report allowlist — see src/adapters/mcp/evidence.ts) ---
   const evidencePath = join(targetPath, evidenceFile(config));
   if (existsSync(evidencePath)) {
     throw new Error(`${evidencePath} already exists — not overwriting.`);

@@ -627,8 +627,7 @@ function hasDynamicDispatch(absFile: string): boolean {
 }
 
 // --- --body: declaration slice (indent-out, no parser) ---
-// extractBody lives in map.ts beside extractExports — the conventions seeder
-// reuses the same slice for wrapper detection (one implementation, rule 1).
+// extractBody lives in map.ts beside extractExports.
 
 // --- --callers: symbol→symbol over importer files (identifier scan) ---
 

@@ -16,8 +16,8 @@ Read this before writing README, launch posts, or marketing copy. Not needed for
 2. **Never claim fapony says which model is better.** Self-grading bias differs per model
    (see the "why the core moved" mem decision). · What can be said is **tokens per task**, measured from logs.
 3. **Lead with day-1 value, always.** `usage-scan` / `usage-web` (CLI) work the moment they're installed because
-   they read logs already there, while mem + debt are **retention, not acquisition** (worthless until accumulated). ·
-   **Don't reorder the README to lead with mem/debt until moved% exists at two points in time** — anyone who installs
+   they read logs already there, while memory (fael's) is **retention, not acquisition** (worthless until accumulated). ·
+   **Don't reorder the README to lead with memory until moved% exists at two points in time** — anyone who installs
    and meets "not enough history yet" as the first thing = walks away (that's what killed `project_health_context`).
 4. **Declare limits yourself before anyone else catches them.** The "What fapony is not" section in the README
    must never be deleted.
