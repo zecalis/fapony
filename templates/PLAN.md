@@ -32,6 +32,11 @@ priority: high                    # optional: high = listed first by `fapony pla
 
 ## 1. Goal (why)
 1–3 sentences — if a reader can't answer "so what" after reading = not clear yet
+Home: <closest existing table / route / module / symbol + the command that found it> → extend it | new, because <it can't hold X>
+  pass: `Home: outstanding is computed in 7 places (review-seed --callers outstanding) → fold into openBalances()`
+  fail: `Home: this plan` · "the system already has X" with no source
+Why now: <traceable evidence: who/what uses it, how often, measured when> | <damage it prevents> | <hypothesis it makes testable> | "no evidence yet"
+  pass: the evidence, or "no evidence yet" said plainly · fail: "best practice" · "agents will use it"
 
 ## 2. Scope (do / don't do)
 **Do:** 3–7 bullets, outcomes not tasks
@@ -40,6 +45,8 @@ priority: high                    # optional: high = listed first by `fapony pla
 ## 3. Done criteria (how we know it's finished)
 3–6 bullets — testable (tests pass / command runs / user can reproduce)
 Never write bare "done" — must be measurable
+At least one runs on real input (a customer file, a live route) or is a case that must fail; a vendor
+contract cites the vendor's doc — fail: "implementation complete" · a grep for text
 
 ## 4. Constraints / Hard rules (must not violate)
 3–8 bullets — violations that break things (not "good practices"), specific to this plan —
@@ -55,6 +62,8 @@ Each step must be verifiable before moving to the next
 A step needing state the system doesn't store yet must say where it lives, who writes it, who reads it
 A measurement step states before it runs: the metric, the data set / window, the pass threshold, and
 what each outcome leads to — it closes with the result's fael decision `(fael:<id>)`, not a commit
+Measurement: <command showing the data exists today + its count> · <date it reaches N at today's rate> ·
+<baseline taken before the change ships> · <no chunk here touches that data> — fail: a KPI nobody knows where to pull from
 
 ## 7. Examples (make it concrete)
 bash examples: before / after — **link into spec/, don't paste it.**

@@ -50,6 +50,14 @@ That is the fact-gathering, without the file — roughly 1k tokens, deterministi
 
 Go on to Phase 1 only when the work is a feature with a life beyond today.
 
+**A feature with nothing that says "now" is parked, not drafted.** Offer the park in one line when
+its Why now (Phase 2) would be empty in all three forms, or it hangs on an "after X" that hasn't
+happened. No outside users is not the test — infra, an internal data model, test tooling pass on
+the damage they prevent or the hypothesis they make testable. The dev decides; "draft anyway"
+overrides it in one line. Park = the seeded plan with `parked_because: <evidence that would wake
+it>` in its frontmatter, then `fapony plan park <PLAN> --apply`. Park is not reject: `fapony plan`
+still lists it.
+
 ## Adopt mode — start from someone else's doc
 
 Trigger: `/plan-with-pony adopt <doc>` — `<doc>` is a path to a handoff, client
@@ -154,6 +162,30 @@ you have to.
 
 **Mark every guess `(guess)`.** A marked guess is the whole technique; an unmarked one is how
 a plan picks up requirements nobody asked for (hard rule 1).
+
+**Four lines every draft carries — the dev corrects them; they are never questions:**
+
+```
+§1 Home: <closest thing that exists + the command that found it> → extend it | new, because <it can't hold X>
+§1 Why now: <traceable evidence: who/what uses it, how often, measured when> | <damage it prevents> | <hypothesis it makes testable> | "no evidence yet"
+§3 ≥ 1 criterion runs on real input (a customer file, a live route) or is a case that must fail; a vendor contract cites the vendor's doc
+§6 Measurement (only with a measuring step): command showing the data exists today + its count · date it reaches N at today's rate · baseline taken before the change ships · no chunk here touches that data
+```
+
+**Home is a place in the code, not a person** — the table, derived value, route or module the plan
+extends or creates (the dev owns every plan). Grade each line before handing the draft back:
+
+| Line | Passes | Fails |
+|---|---|---|
+| Home | a real table/route/module/symbol + the command that checked it (review-seed, grep), or `(guess)` when unchecked | `Home: this plan` · "the system already has X" with no source |
+| Why now | traceable evidence, or "no evidence yet" said plainly | "best practice" · "agents will use it" |
+| Done | ≥ 1 criterion on real input or a failing case | "implementation complete" · a grep for text |
+| Measurement | data source + counting command + today's count | a KPI nobody knows where to pull from |
+
+Before: "Show the outstanding balance on page X". After: `Home: outstanding is computed in 7 places
+(review-seed --callers outstanding) → fold into openBalances() first, page X reads it (guess)`.
+Name symbols, not `file:line` — line refs drift first. "There is no X yet" cites the search that
+came back empty.
 
 **Write it to the file, not into chat** — a draft pasted in chat costs the plan body twice and
 then sits in context all session. Corrections land as small edits instead of a re-draft.
