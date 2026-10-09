@@ -67,7 +67,8 @@ test("testPickChunksNeverOffersAChunkWaitingOnAPerson", () => {
   assert.deepEqual(p.alongside, []);
   const none = pickChunks(items.slice(0, 3), "main");
   assert.equal(none.next, -1);
-  assert.deepEqual(none.waitsOn, ["2"]);
+  // 2 waits on its own reason, not on a chunk — `waiting` says why
+  assert.deepEqual(none.waitsOn, []);
 });
 
 test("testAfterAnotherPlansChunkWaitsUntilThatPlanTicksIt", () => {
@@ -231,6 +232,27 @@ test("testPlanListsWaitingChunksApart", () => {
         assert.doesNotMatch(out, /## later/);
         const all = captureLogs(() => cmdPlanNext([]));
         assert.match(all, /waiting: 1/);
+        // only the waiting chunk left: it waits on its reason, not on itself,
+        // and nothing to close → one pointer line instead of the rules
+        writeFileSync(
+          join(p, "PLAN-x.md"),
+          "---\nkind: unit\n---\n\n# X\n\n## TL;DR\n- [ ] chunk 4 — page (wait ≥30 samples)\n",
+        );
+        const none = captureLogs(() => cmdPlanNext(["PLAN-x.md"]));
+        assert.match(
+          none,
+          /## next\n\(none ready — chunk 4 waits: ≥30 samples\)/,
+        );
+        assert.doesNotMatch(none, /## closing/);
+        assert.match(none, /\nrules: fapony plan PLAN-x\.md --rules$/m);
+        assert.match(
+          captureLogs(() => cmdPlanNext(["PLAN-x.md", "--rules"])),
+          /## closing\n- batching:/,
+        );
+        assert.match(
+          captureLogs(() => cmdPlanNext([])),
+          /next: none ready — chunk 4 waits: ≥30 samples/,
+        );
       } finally {
         process.chdir(prev);
       }
