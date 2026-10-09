@@ -19,9 +19,8 @@ fapony/
                                 # skill/<name>/, so a link out of that dir is dead on install
     plan-with-pony/             # draft plan + spec จาก conversation (pipe to any agent's stdin)
     review-pony/                # review as verification + scope facts before (review-seed), verdict after
-    lookup-before-edit/         # lookup unfamiliar files (review-seed --files) before reading/editing them
+    debug-pony/                 # debug as a ledger: fael before, repro → narrow → disprove, close with what was ruled out
     move-to-done/               # archive PLAN เข้า .fapony/done/ หลัง ship
-    git-commit-conventional/    # commit ทีละขั้นที่จบ + conventional message
     git-ship/                   # push branch, open PR, merge, reset branch onto base
   templates/
     PLAN.md / SPEC.md              # plan+spec templates for `fapony init`
@@ -117,7 +116,7 @@ fapony/
       detect.ts         # which clients exist on this machine
       skills.ts         # linkSkills() — symlinks skill/<name>/ into ~/.claude/skills, never overwrites
       types.ts          # InstallDeps / defaultExit / INSTALL_ROOT
-    update.ts            # fapony update — fetch, preview, confirm, then `merge --ff-only` to the previewed ref (tripwire test คุม ROOT) + spawn a fresh install to refresh opencode's baked plugins
+    update.ts            # fapony update — by channel: git (fetch, preview, confirm, `merge --ff-only`; tripwire test คุม ROOT) or bun/npm global (`@latest` when newer); then re-link skills (prune dead links) + spawn a fresh install to refresh opencode's baked plugins
     util.ts               # templateArgs / fillPrompt / isAffirmative / minutesBetween / avg
     test.ts               # self-check ตัวเอง (thin wrapper → test/index.ts)
   test/

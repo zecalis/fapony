@@ -84,7 +84,10 @@ Write down every place the walk surprises you. Surprises outrank style; chase th
 - `medium` (default) — as written above: full path, callers, tests on the path.
 - `high` — also second-degree callers, and read the tests that exercise them, not just the path.
 - `max` — also grep every changed file for second-degree callers, and re-open
-  every `deferred` line from the last review of this scope, if fael has one (`fael find --files <scope>`).
+  every `deferred` line from the last review of this scope.
+
+At every level, run `fael find --files <a,b,…>` (scope paths, comma-joined) once before walking (when fael is in this
+session): a decision row is a choice already made — it is context, not a bug to report.
 
 Whatever level stopped you, say so in the one-line coverage note (see Report) — "walked to 1 hop"
 is honest, "walked" alone at `low` is not.
@@ -161,13 +164,17 @@ fixed: 1, 2 · skipped: 3 (PLAUSIBLE — could not reach the failing state)
 ```
 
 Fixing changes what actually shipped, not what the review found — re-run pass 4's citation
-check on the new state before calling it done, but don't re-run the whole review. A finding
-`--fix` applied is not recorded in fael — the commit and PR already say it, and an issue born
-fixed only gets closed later by a row restating it.
+check on the new state before calling it done, but don't re-run the whole review.
+
+Each finding you fix is still recorded in fael, once — what broke and how it was fixed is what
+the next agent on those files needs. Before applying it, `fael add issue "<finding title>"
+--files <a,b,…>` (walked paths, comma-joined) and keep the id; after, `fael close <id> "<cause> → <fix>; guard <test>"`
+(the cause and fix, not the finding again); cite `(fael:<id>)` in the commit message. One closed
+row per finding, and the hook's uncited-`fix:` nudge stays quiet. No fael in this session = skip.
 
 ## After: record what the next session needs (fael)
 
-If a blocker/major CONFIRMED finding survived (and `--fix` did not apply it), or the verdict is rework/reject,
+If a blocker/major CONFIRMED finding survived (`--fix` did not already record and close it), or the verdict is rework/reject,
 call fael's `add` tool once (or `fael add` in the shell), after the report is shown. Don't block the report on it,
 and don't let it change the report's content. Clean reviews (ship, nit-only
 findings) record nothing — there is nothing the next session needs to find.

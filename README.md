@@ -114,7 +114,7 @@ self-graded.
 npm install -g @zecalis/fapony
 #    from source instead:
 #    git clone https://github.com/zecalis/fapony.git && cd fapony && bun install && bun link
-#    update: npm i -g @zecalis/fapony@latest && fapony install  (from source: fapony update)
+#    update: fapony update  (bun/npm global or a git checkout; re-links skills after)
 #    (`bun link` claims the global `fapony` bin by package name, not path — re-run it in the
 #    checkout you want to be the one)
 
@@ -183,16 +183,15 @@ Read-only and deterministic — none of it writes anything.
 
 ### Skills
 
-fapony ships seven portable skills, each as `skill/<name>/SKILL.md` — the layout Claude Code
+fapony ships five portable skills, each as `skill/<name>/SKILL.md` — the layout Claude Code
 expects, so a client can symlink the directory rather than copy the file:
 
 | Skill | Purpose | Trigger |
 |-------|---------|---------|
 | `skill/plan-with-pony/` | Draft plan + spec from "what's in your head" via conversation | `/plan-with-pony` |
 | `skill/review-pony/` | Review as verification: scope facts before (`review-seed`), a fael row after when findings survive | `/review-pony` |
-| `skill/lookup-before-edit/` | Look up unfamiliar files (`review-seed --files` + fael) before reading/editing them | `/lookup-before-edit` |
+| `skill/debug-pony/` | Debug as a ledger: read past fael rows first, repro → narrow → disprove, close with cause, what was ruled out, and the guard | `/debug-pony` |
 | `skill/move-to-done/` | Archive a shipped PLAN into .fapony/done/ | `/move-to-done` |
-| `skill/git-commit-conventional/` | Commit per finished step + conventional message | `/git-commit` |
 | `skill/git-ship/` | Push branch, open PR with drafted title/body, merge, reset branch onto base | `/ship`, `/pr` |
 
 `plan-with-pony` is vendor-neutral — the SKILL.md *is* the prompt, so pipe it to any agent:
@@ -275,7 +274,7 @@ fapony report-web [file]                   # static HTML report page
 fapony init <path>                         # scaffold .fapony/ (plan/done/spec/evidence)
 fapony install [--all|--platform <name>|--dry-run]  # wire skills + plan-mv guard into clients
 fapony setup                               # interactive wizard: config + scaffold in one step
-fapony update [--dry-run|--yes]            # git checkouts only — npm install: see Quick start
+fapony update [--dry-run|--yes]            # by install channel (bun/npm global, git), then re-link skills
 fapony upgrade                             # alias of update
 fapony telemetry show|send                 # opt-in only, default off — see TELEMETRY.md
 ```

@@ -89,7 +89,7 @@ export const COMMANDS: CommandInfo[] = [
     name: "update",
     group: "setup",
     summary:
-      "preview incoming commits, confirm, fast-forward [--dry-run|--yes]",
+      "update by install channel (bun/npm global or git), re-link skills [--dry-run|--yes]",
   },
   { name: "upgrade", group: "setup", summary: "alias of update" },
   { name: "telemetry", group: "setup", summary: "opt-in telemetry show/send" },

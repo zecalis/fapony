@@ -4,6 +4,10 @@
 // Each line is a JSON object; usage data lives in type: "token_usage_record"
 // payloads. No cost field — total_cost is always 0. A record whose payload
 // repeats the line right before it verbatim is a re-emission, counted once.
+// Most rollouts carry no token_usage_record, only event_msg/token_count
+// (57 of 65 locally): a file without records is counted from the
+// last_token_usage of each token_count whose running total moved. Never
+// both — in the 8 local files that carry both, the two sums are equal.
 //
 // detail:true adds tool_breakdown/bytes_by_tool from response_item lines of
 // type custom_tool_call / custom_tool_call_output, matched by call_id — the
@@ -53,12 +57,15 @@ interface TokenUsageRecord {
   };
 }
 
+type Usage = NonNullable<TokenUsageRecord["usage"]>;
+
 interface CodexLine {
   timestamp?: string;
   type?: string;
   payload?: {
-    type?: string; // "custom_tool_call" | "custom_tool_call_output" for response_item lines
+    type?: string; // "custom_tool_call" | "custom_tool_call_output" for response_item lines, "token_count" for event_msg
     session_id?: string;
+    id?: string;
     cwd?: string;
     usage?: TokenUsageRecord["usage"];
     turn_token_usage?: TokenUsageRecord["turn_token_usage"];
@@ -75,7 +82,16 @@ interface CodexLine {
     call_id?: string;
     name?: string;
     output?: unknown;
+    // event_msg token_count fields (info is null before the first call)
+    info?: { total_token_usage?: Usage; last_token_usage?: Usage } | null;
   };
+}
+
+interface Step {
+  usage: Usage;
+  ts: string | undefined;
+  cwd: string | undefined;
+  sessionId: string;
 }
 
 interface ModelAcc {
@@ -121,7 +137,7 @@ function walkJsonl(dir: string): string[] {
  * detail:true adds a UsageDetail — tool_breakdown/bytes_by_tool come from
  * custom_tool_call/custom_tool_call_output pairs (matched by call_id); no
  * per-session or timing breakdown yet. Steps are counted from
- * token_usage_record lines.
+ * token_usage_record lines, else from token_count events.
  */
 export function readCodexUsage(
   worktree?: string,
@@ -177,8 +193,12 @@ export function readCodexUsage(
     let fileTimestamp: string | undefined;
     let fileModel: string | undefined;
     let fileProvider: string = "";
+    let fileSessionId: string | undefined;
     let hasTokenUsage = false;
     let prevRecord: string | undefined; // payload of the line just before, if it was a token_usage_record
+    let prevTotal: string | undefined; // total_token_usage of the last counted token_count
+    const records: Step[] = [];
+    const tokenCounts: Step[] = [];
 
     const lines = content.split("\n");
     for (const line of lines) {
@@ -210,6 +230,26 @@ export function readCodexUsage(
           parsed.payload.model ??
           parsed.payload.base_instructions?.provenance?.model;
         fileProvider = parsed.payload.model_provider ?? "";
+        fileSessionId = parsed.payload.session_id ?? parsed.payload.id;
+        continue;
+      }
+
+      if (
+        parsed.type === "event_msg" &&
+        parsed.payload?.type === "token_count"
+      ) {
+        const info = parsed.payload.info;
+        if (!info?.last_token_usage) continue;
+        // An unchanged running total is a re-emission: no new tokens.
+        const total = JSON.stringify(info.total_token_usage);
+        if (total === prevTotal) continue;
+        prevTotal = total;
+        tokenCounts.push({
+          usage: info.last_token_usage,
+          ts: parsed.timestamp ?? fileTimestamp,
+          cwd: fileCwd,
+          sessionId: fileSessionId ?? "unknown",
+        });
         continue;
       }
 
@@ -241,57 +281,65 @@ export function readCodexUsage(
         const rec = parsed.payload;
         const usage = rec.usage ?? rec.turn_token_usage;
         if (!usage) continue;
-
-        // Worktree filtering.
-        if (worktree && fileCwd && fileCwd !== worktree) continue;
-
-        // Timestamp filtering — use the line's own timestamp as fallback.
-        const ts = parsed.timestamp ?? fileTimestamp;
-        if (ts) {
-          const epoch = new Date(ts).getTime() / 1000;
-          if (since !== undefined && epoch < since) continue;
-          if (until !== undefined && epoch > until) continue;
-        }
-
-        const sessionId = rec.session_id ?? "unknown";
-        const model = fileModel ?? "(unknown)";
-        const input = usage.input_tokens ?? 0;
-        const output = usage.output_tokens ?? 0;
-        const reasoning = usage.reasoning_output_tokens ?? 0;
-        const cacheRead = usage.cached_input_tokens ?? 0;
-        const cacheWrite = usage.cache_write_input_tokens ?? 0;
-
-        // Only count each session id once per file.
-        fileSessions.add(sessionId);
-        hasTokenUsage = true;
-        totalSteps++;
-
-        let acc = models.get(model);
-        if (!acc) {
-          acc = {
-            provider: fileProvider,
-            session_count: 0,
-            tokens_input: 0,
-            tokens_output: 0,
-            tokens_reasoning: 0,
-            tokens_cache_read: 0,
-            tokens_cache_write: 0,
-            cost: 0,
-          };
-          models.set(model, acc);
-        }
-        acc.tokens_input += input;
-        acc.tokens_output += output;
-        acc.tokens_reasoning += reasoning;
-        acc.tokens_cache_read += cacheRead;
-        acc.tokens_cache_write += cacheWrite;
-
-        totalInput += input;
-        totalOutput += output;
-        totalReasoning += reasoning;
-        totalCacheRead += cacheRead;
-        totalCacheWrite += cacheWrite;
+        records.push({
+          usage,
+          ts: parsed.timestamp ?? fileTimestamp,
+          cwd: fileCwd,
+          sessionId: rec.session_id ?? "unknown",
+        });
       }
+    }
+
+    for (const { usage, ts, cwd, sessionId } of records.length > 0
+      ? records
+      : tokenCounts) {
+      // Worktree filtering.
+      if (worktree && cwd && cwd !== worktree) continue;
+
+      // Timestamp filtering — use the line's own timestamp as fallback.
+      if (ts) {
+        const epoch = new Date(ts).getTime() / 1000;
+        if (since !== undefined && epoch < since) continue;
+        if (until !== undefined && epoch > until) continue;
+      }
+
+      const model = fileModel ?? "(unknown)";
+      const input = usage.input_tokens ?? 0;
+      const output = usage.output_tokens ?? 0;
+      const reasoning = usage.reasoning_output_tokens ?? 0;
+      const cacheRead = usage.cached_input_tokens ?? 0;
+      const cacheWrite = usage.cache_write_input_tokens ?? 0;
+
+      // Only count each session id once per file.
+      fileSessions.add(sessionId);
+      hasTokenUsage = true;
+      totalSteps++;
+
+      let acc = models.get(model);
+      if (!acc) {
+        acc = {
+          provider: fileProvider,
+          session_count: 0,
+          tokens_input: 0,
+          tokens_output: 0,
+          tokens_reasoning: 0,
+          tokens_cache_read: 0,
+          tokens_cache_write: 0,
+          cost: 0,
+        };
+        models.set(model, acc);
+      }
+      acc.tokens_input += input;
+      acc.tokens_output += output;
+      acc.tokens_reasoning += reasoning;
+      acc.tokens_cache_read += cacheRead;
+      acc.tokens_cache_write += cacheWrite;
+
+      totalInput += input;
+      totalOutput += output;
+      totalReasoning += reasoning;
+      totalCacheRead += cacheRead;
+      totalCacheWrite += cacheWrite;
     }
 
     if (hasTokenUsage && fileSessions.size > 0) {
