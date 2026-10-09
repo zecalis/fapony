@@ -66,6 +66,17 @@ test("testPlanSeedWritesPlan", () => {
       // frontmatter (read by people since plan_list was removed)
       // omit = not started (templates/PLAN.md) — a fresh seed is not active yet
       assert.match(body, /^---\nkind: unit\n---/);
+      // dead weight cut in PLAN-plan-architecture chunk 1 — each line
+      // repeated frontmatter or sat as an unfilled slot
+      assert.ok(
+        !body.includes("**Status:**"),
+        "no Status line under the title",
+      );
+      assert.ok(!body.includes("**Created:**"), "no Created line");
+      assert.ok(
+        !body.includes("## Context (agent)"),
+        "no Context (agent) slot",
+      );
     });
   });
   console.log("  ✓ plan-seed writes PLAN with agent slots + ledger context");
@@ -147,7 +158,7 @@ test("testPlanSeedScopeFilters", () => {
       join(dir, "other", "lonely.ts"),
       "export function lonelyThing(): void {}\n",
     );
-    // §8 prior art: one shipped plan that names the scope, one that doesn't.
+    // A shipped plan that names the scope — §8 must still not count it.
     mkdirSync(join(dir, ".fapony", "done"), { recursive: true });
     mkdirSync(join(dir, ".fapony", "spec"), { recursive: true });
     writeFileSync(
@@ -166,31 +177,15 @@ test("testPlanSeedScopeFilters", () => {
         "utf-8",
       );
       assert.ok(plan.includes("PLAN-scoped"), "--scope value is not the name");
-      // §8 points at the shipped plan that already decided something here —
-      // and never at the one that didn't (that list would match everything)
-      // one count line, not a list — a dir mention is a loose join
-      assert.match(
-        plan,
-        /- 1 done\/parked plan\/spec\(s\) mention apps\/vela\/src\/components — newest PLAN-formatters\.md \(shipped 2026-01-02\) · list: `fapony plan --files apps\/vela\/src\/components`/,
-      );
-      assert.ok(!plan.includes("PLAN-elsewhere"), "§8 stays inside the scope");
-
-      // Same tree, no --scope → §8 goes quiet: every shipped plan matches, so a
-      // list of everything would point at nothing
-      cmdPlanSeed(["wide"]);
-      const wide = readFileSync(
-        join(dir, ".fapony", "plan", "PLAN-wide.md"),
-        "utf-8",
-      );
-      assert.ok(
-        !wide.includes("plan/spec(s) mention"),
-        "§8 prior art needs a --scope to join on",
-      );
+      // §8 no longer counts done/parked plans that mention the scope — the
+      // line was never cited (PLAN-plan-architecture chunk 1)
+      assert.ok(!plan.includes("plan/spec(s) mention"), "§8 carries no count");
+      assert.ok(!plan.includes("PLAN-formatters"), "§8 names no shipped plan");
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  console.log("  ✓ plan-seed --scope filters §8 and never eats the name");
+  console.log("  ✓ plan-seed --scope never eats the name, §8 counts nothing");
 });
 
 test("testPlanSeedCapsHold", () => {
@@ -349,7 +344,9 @@ test("testPlanSeedStepSixPointsAtTheRuleInsteadOfCopyingIt", () => {
       assert.ok(!s6.includes("up to 3 chunks"), "no batching rule in §6");
       assert.ok(!s6.includes("fael add note"), "no closing recipe in §6");
       assert.ok(!s6.includes(".fapony/plan/PLAN-"), "no plan path in §6");
-      assert.ok(s6.includes("- [ ] handoff:"), "Stop-hook opt-in box stays");
+      // the Stop hook that read this box was deleted in e0910f9
+      assert.ok(!s6.includes("- [ ] handoff:"), "no handoff opt-in box");
+      assert.ok(!s6.includes("Chunks → sessions"), "no batching pointer line");
       // the anchor is the part agents got wrong (vela:registry:handoff) and
       // the one part that never drifts — lowercase, like planKeyName
       assert.ok(

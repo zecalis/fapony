@@ -16,7 +16,6 @@ priority: high                    # optional: high = listed first by `fapony pla
 
 # PLAN-<feature>.md — <short name>
 
-> **Status:** 🚧 in-progress · **Owner:** <dev> · **Created:** <YYYY-MM-DD>
 > **Source spec:** [spec/<feature>.md](../spec/<feature>.md) — if any
 
 ## TL;DR
@@ -43,10 +42,11 @@ priority: high                    # optional: high = listed first by `fapony pla
 Never write bare "done" — must be measurable
 
 ## 4. Constraints / Hard rules (must not violate)
-3–8 bullets — violations that break things (not "good practices")
+3–8 bullets — violations that break things (not "good practices"), specific to this plan —
+never copy CLAUDE.md/AGENTS.md rules here: the agent reads those anyway, and a copy goes stale
 
 ## 5. Risks & Escape hatches (if it fails)
-Table with 3–5 rows: risk | likelihood | impact | escape hatch
+3–5 bullets: risk → escape hatch
 
 ## 6. Steps (what in which order)
 1. **<Step 1>** — has a clear deliverable
