@@ -19,10 +19,9 @@ fapony/
                                 # skill/<name>/, so a link out of that dir is dead on install
     plan-with-pony/             # draft plan + spec จาก conversation (pipe to any agent's stdin)
     review-pony/                # review as verification + scope facts before (review-seed), verdict after
-    lookup-before-edit/         # lookup unfamiliar files (review-seed --files) before reading/editing them
+    debug-pony/                 # debug as a ledger: fael before, repro → narrow → disprove, close with what was ruled out
     define-convention/            # turn a not-yet-migrated pattern into a tracked convention (interview + dry-run debt)
     move-to-done/               # archive PLAN เข้า .fapony/done/ หลัง ship
-    git-commit-conventional/    # commit ทีละขั้นที่จบ + conventional message
     git-ship/                   # push branch, open PR, merge, reset branch onto base
   templates/
     PLAN.md / SPEC.md              # plan+spec templates for `fapony init`

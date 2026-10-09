@@ -370,12 +370,6 @@ test("testCliListFlagDocsShowCommaShape", () => {
     );
   }
   // the installed skills teach the same shapes (chunk-3 note: skill/ sweep)
-  const lookup = read("skill/lookup-before-edit/SKILL.md");
-  assert.ok(lookup.includes("--body <sym>[,<sym>]"), "lookup-before-edit body");
-  assert.ok(
-    lookup.includes("--callers <sym>[,<sym>]"),
-    "lookup-before-edit callers",
-  );
   const pony = read("skill/review-pony/SKILL.md");
   assert.ok(pony.includes("--body <sym>[,<sym>]"), "review-pony body");
   assert.ok(pony.includes("--callers <sym>[,<sym>]"), "review-pony callers");

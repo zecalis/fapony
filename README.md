@@ -189,17 +189,16 @@ Read-only and deterministic — none of it writes anything.
 
 ### Skills
 
-fapony ships seven portable skills, each as `skill/<name>/SKILL.md` — the layout Claude Code
+fapony ships six portable skills, each as `skill/<name>/SKILL.md` — the layout Claude Code
 expects, so a client can symlink the directory rather than copy the file:
 
 | Skill | Purpose | Trigger |
 |-------|---------|---------|
 | `skill/plan-with-pony/` | Draft plan + spec from "what's in your head" via conversation | `/plan-with-pony` |
 | `skill/review-pony/` | Review as verification: scope facts before (`review-seed`), a fael row after when findings survive | `/review-pony` |
-| `skill/lookup-before-edit/` | Look up unfamiliar files (`review-seed --files` + fael + debt) before reading/editing them | `/lookup-before-edit` |
+| `skill/debug-pony/` | Debug as a ledger: read past fael rows first, repro → narrow → disprove, close with cause, what was ruled out, and the guard | `/debug-pony` |
 | `skill/define-convention/` | Turn a not-yet-migrated pattern into a tracked convention (interview + dry-run `debt`) | `/define-convention` |
 | `skill/move-to-done/` | Archive a shipped PLAN into .fapony/done/ | `/move-to-done` |
-| `skill/git-commit-conventional/` | Commit per finished step + conventional message | `/git-commit` |
 | `skill/git-ship/` | Push branch, open PR with drafted title/body, merge, reset branch onto base | `/ship`, `/pr` |
 
 `plan-with-pony` is vendor-neutral — the SKILL.md *is* the prompt, so pipe it to any agent:
