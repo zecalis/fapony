@@ -407,6 +407,39 @@ test("testPlanSweepBlocksOnOpenIssuesOnly", () => {
   );
 });
 
+// fael missing or erroring used to read as "no open rows" and archive the plan
+// over its open issues (01M4FXYP). An unread log blocks; MEM_FORCE still moves.
+test("testPlanSweepRefusesWhenFaelUnreadable", () => {
+  withTempRepo((dir) => {
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    mkdirSync(join(dir, ".fapony", "done"), { recursive: true });
+    writeFileSync(
+      join(dir, ".fapony/plan/PLAN-a.md"),
+      "# a\n> ✅ **shipped 2026-10-09** (abc1234)\n",
+    );
+    const bin = mkdtempSync(join(tmpdir(), "fapony-broken-fael-"));
+    writeFileSync(join(bin, "fael"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const sweep = (env: Record<string, string> = {}) =>
+      Bun.spawnSync(["bun", FAPONY, "plan", "sweep", "PLAN-a.md", "--apply"], {
+        cwd: dir,
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, ...env },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+    try {
+      const r = sweep();
+      assert.equal(r.exitCode, 1, "an unreadable fael must block the move");
+      assert.match(r.stderr.toString(), /fael unreadable/);
+      assert.ok(existsSync(join(dir, ".fapony/plan/PLAN-a.md")));
+      assert.equal(sweep({ MEM_FORCE: "1" }).exitCode, 0);
+      assert.ok(existsSync(join(dir, ".fapony/done/PLAN-a.md")));
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  });
+  console.log("  ✓ plan-sweep --apply refuses when fael is unreadable");
+});
+
 // Closing ceremony (PLAN-plan-adopt chunk 3): a sole-key `plan:<name>:chunk-N`
 // row names the plan with no files[] at all, and a files[] entry of the same
 // anchor-prefixed shape does too — both must block the sweep like a path row.

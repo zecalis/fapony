@@ -44,12 +44,19 @@ export const planKeyName = (planPath: string): string | null =>
 //   key = plan:<name> or starts with plan:<name>:  (plan:<name>:chunk-N)
 // A files[] entry of plan:<name>:chunk-N names the plan just as a key of the
 // same shape does — exact-only on files[] slipped those rows out.
-let openCache: { root: string; rows: MemRow[] } | null = null;
-export const openRows = (): MemRow[] => {
-  if (openCache?.root !== root)
-    openCache = { root, rows: readFaelLog(root, undefined, true).rows };
-  return openCache.rows;
+let openCache: { root: string; rows: MemRow[]; ok: boolean } | null = null;
+const readOpen = () => {
+  if (openCache?.root !== root) {
+    const r = readFaelLog(root, undefined, true);
+    openCache = { root, rows: r.rows, ok: r.ok };
+  }
+  return openCache;
 };
+export const openRows = (): MemRow[] => readOpen().rows;
+/** false = fael missing or errored: no rows means "unknown", not "none open". */
+export const faelReadable = (): boolean => readOpen().ok;
+export const FAEL_UNREADABLE =
+  "fael unreadable (not on PATH, or `fael find` failed) — open issues and handoffs unknown";
 export const openRowsFor = (planPath: string): MemRow[] => {
   const file = basename(planPath);
   const name = planKeyName(planPath);
@@ -865,6 +872,8 @@ export const relocatePlan = (src: string, toDir: string): string => {
 // work — and so is an open handoff row (`plan:<name>:handoff` or legacy
 // `plan:<name>:chunk-N`, any kind). Null when nothing blocks the move.
 const openRowsBlockingMove = (src: string): string | null => {
+  // fail closed: an unread log must not pass for an empty one
+  if (!faelReadable()) return FAEL_UNREADABLE;
   const openBugs = openRowsFor(rel(src)).filter((r) => r.kind === "bug");
   const { live: openHandoffs } = splitHandoffs(src);
   if (!openBugs.length && !openHandoffs.length) return null;
@@ -887,6 +896,7 @@ export const cmdPlanSweep = (a: string[]) => {
   const apply = a.includes("--apply");
 
   if (!target) {
+    if (!faelReadable()) console.log(`⚠ ${FAEL_UNREADABLE}\n`);
     if (candidates.length) {
       console.log(
         `# plan-sweep — ${candidates.length} file(s) marked shipped but not archived\n`,
