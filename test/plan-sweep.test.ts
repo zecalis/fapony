@@ -147,7 +147,7 @@ test("testPlanSweepApplyEndToEnd", () => {
 
     const proc = Bun.spawnSync(
       ["bun", FAPONY, "plan", "sweep", "PLAN-a.md", "--apply"],
-      { cwd: dir, stdout: "pipe", stderr: "pipe" },
+      { cwd: dir, env: process.env, stdout: "pipe", stderr: "pipe" },
     );
     const out = proc.stdout.toString() + proc.stderr.toString();
     assert.equal(proc.exitCode, 0, `plan-sweep must succeed:\n${out}`);
@@ -212,6 +212,7 @@ test("testPlanSweepMovesSpecWithTheLastPlanCitingIt", () => {
         ["bun", FAPONY, "plan", "sweep", name, "--apply"],
         {
           cwd: dir,
+          env: process.env,
           stdout: "pipe",
           stderr: "pipe",
         },
@@ -265,7 +266,7 @@ test("testPlanSweepAcceptsRepoRelativePath", () => {
     );
     const proc = Bun.spawnSync(
       ["bun", FAPONY, "plan", "sweep", ".fapony/plan/PLAN-a.md", "--apply"],
-      { cwd: dir, stdout: "pipe", stderr: "pipe" },
+      { cwd: dir, env: process.env, stdout: "pipe", stderr: "pipe" },
     );
     const out = proc.stdout.toString() + proc.stderr.toString();
     assert.equal(proc.exitCode, 0, `repo-relative path must resolve:\n${out}`);
@@ -320,6 +321,7 @@ test("testPlanSweepSupersededUntrackedPlan", () => {
     const sweep = (...args: string[]) => {
       const p = Bun.spawnSync(["bun", FAPONY, "plan", "sweep", ...args], {
         cwd: dir,
+        env: process.env,
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -405,6 +407,39 @@ test("testPlanSweepBlocksOnOpenIssuesOnly", () => {
   console.log(
     "  ✓ plan-sweep --apply blocks on open issues, not notes/decisions",
   );
+});
+
+// fael missing or erroring used to read as "no open rows" and archive the plan
+// over its open issues (01M4FXYP). An unread log blocks; MEM_FORCE still moves.
+test("testPlanSweepRefusesWhenFaelUnreadable", () => {
+  withTempRepo((dir) => {
+    mkdirSync(join(dir, ".fapony", "plan"), { recursive: true });
+    mkdirSync(join(dir, ".fapony", "done"), { recursive: true });
+    writeFileSync(
+      join(dir, ".fapony/plan/PLAN-a.md"),
+      "# a\n> ✅ **shipped 2026-10-09** (abc1234)\n",
+    );
+    const bin = mkdtempSync(join(tmpdir(), "fapony-broken-fael-"));
+    writeFileSync(join(bin, "fael"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const sweep = (env: Record<string, string> = {}) =>
+      Bun.spawnSync(["bun", FAPONY, "plan", "sweep", "PLAN-a.md", "--apply"], {
+        cwd: dir,
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, ...env },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+    try {
+      const r = sweep();
+      assert.equal(r.exitCode, 1, "an unreadable fael must block the move");
+      assert.match(r.stderr.toString(), /fael unreadable/);
+      assert.ok(existsSync(join(dir, ".fapony/plan/PLAN-a.md")));
+      assert.equal(sweep({ MEM_FORCE: "1" }).exitCode, 0);
+      assert.ok(existsSync(join(dir, ".fapony/done/PLAN-a.md")));
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  });
+  console.log("  ✓ plan-sweep --apply refuses when fael is unreadable");
 });
 
 // Closing ceremony (PLAN-plan-adopt chunk 3): a sole-key `plan:<name>:chunk-N`

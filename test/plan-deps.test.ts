@@ -230,7 +230,7 @@ test("testPlanSweepBlockedViewAndUnblockHint", () => {
     // --apply through the real CLI prints the 🔓 unblock hint
     const proc = Bun.spawnSync(
       ["bun", FAPONY, "plan", "sweep", "PLAN-ship-gate.md", "--apply"],
-      { cwd: dir, stdout: "pipe", stderr: "pipe" },
+      { cwd: dir, env: process.env, stdout: "pipe", stderr: "pipe" },
     );
     const out2 = proc.stdout.toString() + proc.stderr.toString();
     assert.equal(proc.exitCode, 0, `plan-sweep --apply must succeed:\n${out2}`);

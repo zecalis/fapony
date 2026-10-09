@@ -36,6 +36,8 @@ import {
   checkTickedLine,
   chunkLabel,
   DROP_RE,
+  FAEL_UNREADABLE,
+  faelReadable,
   firstSectionItems,
   missingFael,
   openRows,
@@ -363,6 +365,7 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
   const isLead = (key?: string) =>
     !!key && (key === handoffKey || key === nextKey);
   const all = openRowsFor(file);
+  if (!faelReadable()) console.log(`\n⚠ ${FAEL_UNREADABLE}`);
   const handoffs = all
     .filter(
       (r) =>
@@ -454,6 +457,7 @@ function showAll(): void {
   const names = planDirs().flatMap((d) =>
     existsSync(d) ? readdirSync(d).flatMap((n) => planKeyName(n) ?? []) : [],
   );
+  if (!faelReadable()) console.log(`\n⚠ ${FAEL_UNREADABLE}`);
   const orphans = orphanHandoffKeys(openRows(), names);
   if (orphans.length)
     console.log(
