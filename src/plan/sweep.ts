@@ -395,8 +395,12 @@ export const collectDepIssues = (active: string[]): string[] => {
           `${relPath} — blocked_by points at ${ref} but no such file is in plan/, done/ or parked/\n   fix: correct the filename or keep blocked_by as a plain sentence`,
         );
       } else if (loc === "done") {
+        // only a status:blocked plan is "still blocked" — any other plan just
+        // carries a stale blocked_by
         issues.push(
-          `${relPath} — blocker ${ref} already shipped to done/ but this plan is still status:blocked\n   fix: clear status:blocked or tick the remaining chunk`,
+          fm.status === "blocked"
+            ? `${relPath} — blocker ${ref} already shipped to done/ but this plan is still status:blocked\n   fix: clear status:blocked or tick the remaining chunk`
+            : `${relPath} — blocker ${ref} already shipped to done/ but blocked_by still names it\n   fix: drop ${ref} from blocked_by`,
         );
       } else if (loc === "parked") {
         issues.push(

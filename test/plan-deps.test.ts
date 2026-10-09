@@ -317,3 +317,26 @@ test("testPlaceholderWarnsInPlanAndCitedSpec", () => {
     });
   });
 });
+
+test("testShippedBlockerMessageFollowsStatus", () => {
+  withTempRepo((dir) => {
+    setup(dir, {
+      "PLAN-held.md": activeBody(
+        "---\nstatus: blocked\nblocked_by: PLAN-gate.md\n---",
+      ),
+      "PLAN-free.md": activeBody("---\nblocked_by: PLAN-gate.md\n---"),
+    });
+    writeFileSync(join(dir, ".fapony", "done", "PLAN-gate.md"), "# G\n");
+    inRepo(dir, () => {
+      const [held, free] = collectDepIssues(
+        ["PLAN-held.md", "PLAN-free.md"].map((n) =>
+          join(dir, ".fapony", "plan", n),
+        ),
+      );
+      assert.match(held, /PLAN-held\.md .* still status:blocked/);
+      // a plan that never said status:blocked is not told it still does
+      assert.doesNotMatch(free, /status:blocked/);
+      assert.match(free, /fix: drop PLAN-gate\.md from blocked_by/);
+    });
+  });
+});
