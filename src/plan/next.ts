@@ -13,7 +13,12 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { misfiledHandoffs, orphanHandoffKeys, pickChunks } from "./parallel.js";
+import {
+  misfiledHandoffs,
+  orphanHandoffKeys,
+  type Picked,
+  pickChunks,
+} from "./parallel.js";
 import { mentionsOfFiles, resolvePlan } from "./resolve.js";
 import {
   doneDir,
@@ -232,7 +237,27 @@ function showFiles(files: string[]): void {
     );
 }
 
-function showPlan(file: string, chunk: string | null): void {
+// Why no chunk is offered. A `(wait …)` chunk waits on its own reason, not
+// on a chunk — "the first open chunk waits on chunk 4" when 4 is that chunk
+// read as nonsense.
+const noneReady = (pick: Picked, ordered: string[]): string => {
+  const held = pick.waitsOn.length ? null : pick.waiting[0];
+  return [
+    pick.wip.length
+      ? `${pick.wip.length} chunk(s) claimed by another worktree`
+      : "",
+    held
+      ? `chunk ${chunkLabel(ordered[held.at]) ?? "?"} waits: ${held.why}`
+      : "",
+    pick.waitsOn.length
+      ? `the first open chunk waits on ${pick.waitsOn.map((l) => `chunk ${l}`).join(", ")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+};
+
+function showPlan(file: string, chunk: string | null, rules = false): void {
   const items = readPlanSectionItems(file);
   const { unchecked } = items;
   console.log(`# ${readPlanTitle(file) || basename(file)} — ${rel(file)}`);
@@ -268,10 +293,7 @@ function showPlan(file: string, chunk: string | null): void {
     const elsewhere = chunk ? [] : pick.wip.map((w) => toAt(w.at));
     const alongside = chunk ? [] : pick.alongside;
     if (at >= 0) console.log(`\n## next\n- [ ] ${unchecked[at]}`);
-    else
-      console.log(
-        `\n## next\n(none ready — ${pick.wip.length ? `${pick.wip.length} chunk(s) claimed by another worktree; ` : ""}the first open chunk waits on ${pick.waitsOn.map((l) => `chunk ${l}`).join(", ") || "an open chunk"})`,
-      );
+    else console.log(`\n## next\n(none ready — ${noneReady(pick, ordered)})`);
     if (elsewhere.length) {
       console.log(`\n## in progress in another worktree`);
       for (const [i, w] of pick.wip.entries())
@@ -368,11 +390,14 @@ function showPlan(file: string, chunk: string | null): void {
       console.log(
         `⚠ handoff under a key fapony plan never reads: [${r.id}] ${r.key} — re-file it: fael add note "<text>" --files <f>,plan:${name} --key plan:${name}:${r.key?.split(":").pop()} --supersedes ${r.id}`,
       );
-  if (unchecked.length) {
+  // ~3 KB of rules on every call — print them only when there is a chunk to
+  // close (next, or this session's own wip, which pickChunks makes next)
+  if (rules || (unchecked.length && at >= 0)) {
     console.log(`\n## closing`);
     for (const rule of chunkRules(`plan:${name ?? "<name>"}`))
       console.log(`- ${rule}`);
-  }
+  } else if (unchecked.length)
+    console.log(`\nrules: fapony plan ${basename(file)} --rules`);
 }
 
 function showAll(): void {
@@ -423,9 +448,7 @@ function showAll(): void {
         `  next: ${clip(ordered[pick.next].replace(/^\s*[-*]\s+\[\s\]\s+/, ""))}`,
       );
     else if (unchecked[0])
-      console.log(
-        `  next: none ready — waits on ${pick.waitsOn.map((l) => `chunk ${l}`).join(", ") || "a claimed chunk"}`,
-      );
+      console.log(`  next: none ready — ${noneReady(pick, ordered)}`);
   }
   // A handoff key that names no plan is a note no `fapony plan` will show.
   const names = planDirs().flatMap((d) =>
@@ -478,5 +501,5 @@ export function cmdPlanNext(a: string[]): void {
     );
     process.exit(1);
   }
-  showPlan(r.file, r.chunk);
+  showPlan(r.file, r.chunk, a.includes("--rules"));
 }

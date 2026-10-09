@@ -39,7 +39,8 @@ export interface Picked {
   waiting: { at: number; why: string }[];
   /** ready chunks that may run in another worktree, with any shared files */
   alongside: { at: number; shared: string[] }[];
-  /** why `next` is -1: the chunk(s) the first open one waits on */
+  /** why `next` is -1: the chunk(s) the first open one waits on — empty when
+   *  that chunk is itself `(wait …)` (`waiting[0]` says why) */
   waitsOn: string[];
 }
 
@@ -82,7 +83,8 @@ export function pickChunks(items: string[], branch: string | null): Picked {
   const waiting: Picked["waiting"] = [];
   const ready: number[] = [];
   let mine = -1;
-  let waitsOn: string[] = [];
+  // set by the first unclaimed open chunk that is not ready
+  let waitsOn: string[] | null = null;
   items.forEach((l, i) => {
     if (!open(l)) return;
     const claim = WIP_RE.exec(l);
@@ -96,12 +98,12 @@ export function pickChunks(items: string[], branch: string | null): Picked {
     const held = WAIT_RE.exec(l);
     if (held) {
       waiting.push({ at: i, why: held[1].trim() || "?" });
-      if (!waitsOn.length && !ready.length) waitsOn = [label(l) ?? "?"];
+      waitsOn ??= [];
       return;
     }
     const w = waits(i);
     if (w.length === 0) ready.push(i);
-    else if (!waitsOn.length && !ready.length) waitsOn = w;
+    else waitsOn ??= w;
   });
 
   const next = mine >= 0 ? mine : (ready.shift() ?? -1);
@@ -117,7 +119,7 @@ export function pickChunks(items: string[], branch: string | null): Picked {
         at,
         shared: files(items[at]).filter((f) => busyFiles.has(f)),
       })),
-    waitsOn: next >= 0 ? [] : waitsOn,
+    waitsOn: next >= 0 ? [] : (waitsOn ?? []),
   };
 }
 
