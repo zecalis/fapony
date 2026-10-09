@@ -64,7 +64,8 @@ The ruled-out lines are the *tried* part of the record below. Keep them short an
 ## At the fix — close it where it happened
 
 The fix is done when the repro passes, a guard exists (the repro, kept as a test), and the
-probes are gone. Then, once, in the same message as your next tool call:
+probes are gone. Run the guard once against the code before the fix: it must fail there — a
+guard that passes either way guards nothing. Then, once, in the same message as your next tool call:
 
 ```bash
 # an issue already open on it (from Pass 0, or filed mid-session):
