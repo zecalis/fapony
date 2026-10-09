@@ -36,8 +36,8 @@ function defaultInstall(): void {
 /** argv for the spawned plugin refresh — exported so tests can pin the flags:
  *  a wrong flag fails silently (the child would just do a full install and
  *  rewrite opencode.json, the exact bug `--plugins-only` exists to prevent). */
-export function refreshArgv(files: string[]): string[] {
-  const argv = [
+export function refreshArgv(): string[] {
+  return [
     join(ROOT, "fapony.ts"),
     "install",
     "--platform",
@@ -46,9 +46,6 @@ export function refreshArgv(files: string[]): string[] {
     // user's opencode.json (rule 6c).
     "--plugins-only",
   ];
-  // Opt-in plugin: refresh it when the user installed it, never create it.
-  if (files.includes("fapony-git-autonomy.ts")) argv.push("--git-autonomy");
-  return argv;
 }
 
 /**
@@ -68,7 +65,7 @@ function defaultRefreshPlugins(): boolean {
   const files = opencodePluginFiles(getHome);
   if (files.length === 0) return false;
   console.log("\n  Refreshing OpenCode plugins...");
-  const r = spawnSync(process.execPath, refreshArgv(files), {
+  const r = spawnSync(process.execPath, refreshArgv(), {
     stdio: "pipe",
     timeout: 30_000,
   });

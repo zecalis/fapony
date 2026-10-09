@@ -16,18 +16,4 @@ export {
   utcStamp,
 } from "../../core/hook-helpers.js";
 export { computeHintImpact } from "./compute-hint-impact.js";
-export {
-  GIT_AUTONOMY_COMMIT_POLICY,
-  GIT_AUTONOMY_PLUGIN_FILE,
-  GIT_AUTONOMY_PLUGIN_NAME,
-  GIT_AUTONOMY_SYSTEM_REWRITES,
-  GIT_AUTONOMY_TOOL_POLICY,
-  GIT_AUTONOMY_TOOL_REWRITES,
-  type GitAutonomyRewrite,
-  type GitAutonomyStatus,
-  type GitAutonomyToolRewrite,
-  gitAutonomyStatus,
-  rewriteGitAutonomySystem,
-  rewriteGitAutonomyTool,
-} from "./git-autonomy.js";
 export { cmdHookMvGuard, mvGuardDecision } from "./mv-guard.js";

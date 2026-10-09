@@ -42,7 +42,7 @@ fapony/
       defaults.ts / types.ts / getters.ts / load.ts  # shims re-exporting core/config.ts
     adapters/           # I/O boundary — thin framing only, no logic (PLAN-lib-layer chunk 3)
       cli.ts            # fapony.ts dispatch target
-      hooks/            # hook-mv-guard / git-autonomy / compute-hint-impact (digest reads old fires) · memory hooks moved to fael
+      hooks/            # hook-mv-guard / compute-hint-impact (digest reads old fires) · memory hooks moved to fael
       mcp/              # no server (removed 2026-09-25) — collect/check/report engines for `fapony report`
     gates.ts          # per-round gate enrichment — model + session tokens per gate; carries `sessionId` so callers can dedupe
     parse.ts          # parseGateVerdict() + qualityScore()
@@ -110,7 +110,7 @@ fapony/
     install.ts          # barrel — re-exports src/install/ (fapony install --platform …)
     install/            # one file per client + shared pieces
       claude.ts         # ~/.claude/settings.json hooks (mv-guard) + removes retired fapony hooks
-      opencode.ts       # ~/.config/opencode/plugins (opt-in git-autonomy) + removes retired plugins
+      opencode.ts       # ~/.config/opencode/plugins: removes retired plugins
       zcode.ts / codex.ts / antigravity.ts  # detect + skills symlink only
       detect.ts         # which clients exist on this machine
       skills.ts         # linkSkills() — symlinks skill/<name>/ into ~/.claude/skills, never overwrites

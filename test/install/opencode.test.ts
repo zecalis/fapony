@@ -38,7 +38,7 @@ test("testInstallOpencodeLinksSkillsAndNeverWritesConfig", () => {
     }
     // MCP moved to fael — no opencode.json write.
     assert.ok(!existsSync(join(home, ".config", "opencode", "opencode.json")));
-    // No default plugin since the edit hint was cut — git-autonomy is opt-in.
+    // No default plugin since the edit hint was cut.
     assert.deepStrictEqual(
       opencodePluginFiles(() => home),
       [],
@@ -117,10 +117,10 @@ test("testOpencodePluginFiles", () => {
       "a foreign plugin is not a fapony install",
     );
     writeFileSync(join(pluginsDir, "fapony-read-hint.ts"), "// ours\n");
-    writeFileSync(join(pluginsDir, "fapony-git-autonomy.ts"), "// ours\n");
+    writeFileSync(join(pluginsDir, "fapony-edit-hint.ts"), "// ours\n");
     assert.deepStrictEqual(
       opencodePluginFiles(() => home).sort(),
-      ["fapony-git-autonomy.ts", "fapony-read-hint.ts"],
+      ["fapony-edit-hint.ts", "fapony-read-hint.ts"],
       "lists every fapony-*.ts plugin, and only those",
     );
   });
