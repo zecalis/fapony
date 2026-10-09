@@ -1,7 +1,7 @@
 // src/seed/plan-seed.ts — `fapony plan-seed <name> [--spec] [--scope <path>[,<path>]]...`
 //
 // Writes PLAN + SPEC straight into planDir/specDir. What it pre-fills is the
-// structure (frontmatter, the 8 sections, prior art, ledger context) — the
+// structure (frontmatter, the 8 sections, ledger context) — the
 // agent is left with judgment only.
 //
 // **§2/§5 no longer carry seeded facts (2026-09-18).** They held a repetition
@@ -50,7 +50,6 @@ import {
 } from "../core/config.js";
 import { readFaelLog } from "../fael.js";
 import { extractExports } from "../map.js";
-import { findMentions } from "../plan/resolve.js";
 import { firstSectionItems } from "../plan/sweep.js";
 import { capLines, execGit, SIG_MAX } from "./primitives.js";
 
@@ -96,46 +95,12 @@ function scopeSourceFiles(root: string): string[] {
   );
 }
 
-// The overwrite check catches a filename collision. It does not catch the
-// expensive mistake: planning again what a shipped plan already decided —
-// PLAN-cost-per-pass froze the tokens/pass formula, and a later seed over
-// src/stats gave no hint it existed. Scope paths are the join key: a shipped
-// plan that names this directory decided something about the code this seed
-// is about to plan. Headers only (title + shipped date) — pulling the bodies
-// in would recreate the reading task the plan exists to avoid.
-function renderPriorArt(cwd: string, config: Config, roots: string[]): string {
-  const placeholder = "- _(agent fills in)_";
-  const keys = roots
-    .map((r) => relative(cwd, r))
-    .filter((r) => r !== "" && r !== ".");
-  // No --scope means every shipped plan matches — a list of everything points
-  // at nothing.
-  if (keys.length === 0) return placeholder;
-
-  const hits = findMentions(
-    // parked/ too: a plan set aside over the same files is the prior art a
-    // new seed most needs to see
-    [doneDir(config), PARKED_DIR, specDir()].map((dir) => ({
-      abs: join(cwd, dir),
-      label: dir.split("/").pop() ?? dir,
-    })),
-    keys,
-  );
-  if (hits.length === 0) return placeholder;
-  // One count line, not a list: a dir mention is a loose join — a vela seed
-  // kept 1 of 5 listed plans. The command lists them for whoever wants them.
-  const newest = hits.reduce((a, b) => (b.shipped > a.shipped ? b : a));
-  return [
-    `- ${hits.length} done/parked plan/spec(s) mention ${keys.join(", ")} — newest ${newest.name}${newest.shipped ? ` (shipped ${newest.shipped})` : ""} · list: \`fapony plan --files ${keys.join(",")}\` \`(fapony plan-seed)\``,
-    placeholder,
-  ].join("\n");
-}
-
 // Chunk 5 (PLAN-seed-and-surface): stdout ends with the plans that already
 // exist — the seed that lands next to a shipped decision without knowing it
-// is the expensive mistake (§8 prior art guards the file, this guards the
-// glance). Active plans first (the ones a new seed must not duplicate),
-// then shipped; capped like every other list here.
+// is the expensive mistake. Active plans first (the ones a new seed must not
+// duplicate), then shipped; capped like every other list here. §8 no longer
+// counts shipped plans that mention the scope — nobody cited that line
+// (PLAN-plan-architecture chunk 1).
 const MAX_PLAN_LIST = 10;
 
 function listExistingPlans(
@@ -241,7 +206,7 @@ function renderExistingInScope(
   cap: number,
 ): string[] {
   // No --scope means every file in the repo matches — a list of everything
-  // points at nothing (§8 prior art goes quiet for the same reason).
+  // points at nothing.
   if (!scoped)
     return ["- _(no --scope — re-seed with --scope <dir> to list exports)_"];
   const abs: string[] = [];
@@ -273,7 +238,6 @@ function renderExistingInScope(
 
 function planTemplate(
   name: string,
-  priorArt: string,
   traps: string[],
   existingScope: string[],
   specLink: string | null,
@@ -283,8 +247,6 @@ kind: unit
 ---
 
 # PLAN-${name} — (agent fills in a title)
-
-> **Status:** not started · **Created:** (agent fills in the date)
 
 ## TL;DR
 - **What:** (agent fills in) · **Why:** (agent fills in) · **Done when:** (agent fills in)
@@ -312,11 +274,7 @@ _(agent fills in)_
 _(agent fills in)_
 
 ## 6. Steps (what in which order)
-**Chunks → sessions → PRs, closing a step:** \`fapony plan PLAN-${name}.md\` prints the batching rule and how to close a chunk — the single source, nothing to copy here.
-
 1. _(agent fills in — each step must be verifiable)_
-
-- [ ] handoff: the mem note is the handoff — this box only opts the plan into the Stop-hook check
 
 **Handoff (fael):** anchor \`plan:${name.toLowerCase()}\` — key \`plan:${name.toLowerCase()}:handoff\`; \`fapony plan PLAN-${name}.md\` prints the rest.
 
@@ -328,10 +286,7 @@ ${
 }
 
 ## 8. References
-${priorArt}
-
-## Context (agent)
-_(empty slot — the agent dumps its own graph/code-summary)_
+- _(agent fills in)_
 `;
 }
 
@@ -771,7 +726,6 @@ export function cmdPlanSeed(args: string[]): void {
     process.exit(1);
   }
 
-  const priorArt = renderPriorArt(cwd, config, roots);
   const scoped = requested.length > 0;
   // Known traps live in the PLAN: the SPEC is the signature dump nobody
   // re-reads, and the one useful row of a vela seed sat there unseen.
@@ -811,7 +765,7 @@ export function cmdPlanSeed(args: string[]): void {
 
   mkdirSync(planDirAbs, { recursive: true });
   const buildPlan = (existing: string[]): string =>
-    planTemplate(name, priorArt, traps.lines, existing, specLink);
+    planTemplate(name, traps.lines, existing, specLink);
   let planBody = buildPlan(existingScope);
   // The ≤ ~60 contract predates the §4 block — shrink the block (never the
   // judgment sections) until the file fits. Each item is one line, so cutting

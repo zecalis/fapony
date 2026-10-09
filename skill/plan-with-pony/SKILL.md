@@ -105,22 +105,21 @@ idea already points at a directory (repeatable; without it the seed scans the wh
 warns past ~300 files):
 
 ```bash
-fapony plan-seed <feature> --spec --scope <path>
+fapony plan-seed <feature> --scope <path>          # add --spec when the plan will need one
 ```
 
-One command, no MCP round trip. It writes `<planDir>/PLAN-<feature>.md` +
-`<specDir>/SPEC-<feature>.md` — the frontmatter, the 8 empty sections, a `## 8. References` list
-line counting shipped plans that already mention this scope, and a `## Context (fapony)` block
-under the TL;DR (Known traps — open fael issues/decisions whose files are in scope — plus what is
-already in scope, one line per scope file with its exports; needs `--scope` to list anything).
+Add `--spec` only when the plan will carry a schema, a contract, or an edge-case table — what §7
+must not hold; Phase 4 can still write the SPEC later. One command, no MCP round trip. It writes
+`<planDir>/PLAN-<feature>.md` (+ `<specDir>/SPEC-<feature>.md` with `--spec`) — the frontmatter,
+the 8 empty sections, and a `## Context (fapony)` block under the TL;DR (Known traps — open fael issues/decisions whose files
+are in scope — plus one line per scope file with its exports; needs `--scope` to list anything).
 No `status:` — omit = not started. Stdout flags open chunks of other plans that mention a scope
 file (path, basename or stem): that is a plan already doing this work — merge or order, don't
-draft a second one. No ledger-ranking line: the ledger is frozen and
-cross-model ranking claims are off the table, so the seed does not point at them. SPEC chunks carry
-verbatim signatures, hard-capped (PLAN ≤ ~60 / SPEC ≤ 200 lines), and capped lines say what was
-cut. Stdout ends with the existing plan list (active first, then shipped) — the seed that lands
-next to a shipped decision without knowing it is the expensive mistake, and the file guard in §8
-is not where the glance lands. The CLI resolves plan-dir/spec-dir and refuses to overwrite (pick `-v2` — see Phase 2).
+draft a second one. SPEC chunks carry verbatim signatures, hard-capped (PLAN ≤ ~60 / SPEC ≤ 200
+lines), and capped lines say what was cut. Stdout ends with the existing plan list (active first,
+then shipped) — the seed that lands next to a shipped decision without knowing it is the
+expensive mistake. The CLI resolves plan-dir/spec-dir and refuses to overwrite (pick `-v2` — see
+Phase 2).
 
 **§2/§5 arrive empty on purpose (2026-09-18).** They used to hold a repetition scan and analyze
 findings; measured over every plan that ever used them, §5 printed "no findings" 3 times out of 3
@@ -143,7 +142,7 @@ So the seed buys you structure; the draft budget goes on judgment:
 
 Write the full draft **now**, all eight sections, from the Phase 0 harvest + the Phase 1 answer
 — **or, when Phase 1.5 seeded a file, complete that file instead of writing from scratch**
-(its frontmatter, §8 and Context block are already there). Fill every section — guessing where
+(its frontmatter and Context block are already there). Fill every section — guessing where
 you have to.
 
 ```
