@@ -39,6 +39,27 @@ export function isFaponySkillLink(target: string, name: string): boolean {
   return basename(clean) === name && basename(dirname(clean)) === "skill";
 }
 
+/** Names in `skillsDir` that are fapony skill links (dangling ones too). */
+function faponyLinks(skillsDir: string): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(skillsDir);
+  } catch {
+    return [];
+  }
+  return entries.filter((name) => {
+    try {
+      const p = join(skillsDir, name);
+      return (
+        lstatSync(p).isSymbolicLink() &&
+        isFaponySkillLink(readlinkSync(p), name)
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
 /**
  * Link every skill/<name>/ into `skillsDir`.
  *
@@ -48,6 +69,10 @@ export function isFaponySkillLink(target: string, name: string): boolean {
  *
  * Exception: a symlink pointing at another fapony checkout's `skill/<name>`
  * counts as ours and is replaced with this checkout's link.
+ *
+ * A fapony link whose skill no longer ships (its target is gone) is removed
+ * as `pruned` — only a dangling link of fapony's shape, so nothing that
+ * still resolves, and nothing that isn't ours, is ever touched.
  */
 export function linkSkills(
   skillsDir: string,
@@ -62,6 +87,13 @@ export function linkSkills(
     .sort();
 
   const out: SkillLinkResult[] = [];
+  for (const name of faponyLinks(skillsDir)) {
+    const dest = join(skillsDir, name);
+    // A name that still ships is re-linked by the loop below.
+    if (names.includes(name) || existsSync(dest)) continue;
+    if (!dryRun) unlinkSync(dest);
+    out.push({ name, action: "pruned" });
+  }
   for (const name of names) {
     const src = join(srcRoot, name);
     const dest = join(skillsDir, name);
@@ -114,6 +146,7 @@ export function reportSkills(
   const linked = results.filter((r) => r.action === "linked").length;
   const already = results.filter((r) => r.action === "already").length;
   const conflicts = results.filter((r) => r.action === "conflict");
+  const pruned = results.filter((r) => r.action === "pruned");
 
   if (linked > 0) {
     const verb = dryRun ? "would link" : "linked";
@@ -124,6 +157,12 @@ export function reportSkills(
   if (already > 0) {
     console.error(`  ${already} already linked — no change`);
   }
+  if (pruned.length > 0) {
+    const verb = dryRun ? "would remove" : "removed";
+    console.error(
+      `✓ ${verb} ${pruned.length} link${pruned.length === 1 ? "" : "s"} to skills fapony no longer ships: ${pruned.map((r) => r.name).join(", ")}`,
+    );
+  }
   for (const c of conflicts) {
     console.error(
       `  ! ${c.name} already exists and is not a fapony link — not overwriting`,
@@ -132,4 +171,18 @@ export function reportSkills(
       `    to replace: rm -r ${join(skillsDir, c.name)} && ln -s ${join(INSTALL_ROOT, "skill", c.name)} ${join(skillsDir, c.name)}`,
     );
   }
+}
+
+/**
+ * Re-link skills in every skills dir fapony already linked into — after an
+ * update a new skill gets its link and a removed one loses its dead link.
+ * A dir with no fapony link is skipped: the user never installed there.
+ * Returns whether any dir was refreshed.
+ */
+export function refreshSkillLinks(getHome: () => string): boolean {
+  const dirs = [claudeSkillsDir(getHome), agentsSkillsDir(getHome)].filter(
+    (d) => faponyLinks(d).length > 0,
+  );
+  for (const d of dirs) reportSkills(linkSkills(d, false), d, false);
+  return dirs.length > 0;
 }

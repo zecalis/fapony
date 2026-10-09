@@ -3,7 +3,9 @@ import assert from "node:assert";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  channelCommand,
   cmdUpdate,
+  detectChannel,
   formatDirtyBlock,
   parseDirtyLines,
   parseUpdateArgs,
@@ -721,7 +723,87 @@ test("testCmdUpdateSummaryReflectsRefresh", async () => {
         refresh: () => refreshed,
       });
     });
-    assert.equal(out.includes("client plugins refreshed"), refreshed, out);
+    assert.equal(
+      out.includes("client skills/plugins refreshed"),
+      refreshed,
+      out,
+    );
   }
   console.log("  ✓ cmdUpdate summary only claims a refresh that happened");
+});
+
+test("testDetectChannel", () => {
+  assert.equal(
+    detectChannel("/Users/u/.bun/install/global/node_modules/@zecalis/fapony"),
+    "bun",
+  );
+  assert.equal(
+    detectChannel(
+      "C:\\Users\\u\\.bun\\install\\global\\node_modules\\@zecalis\\fapony",
+    ),
+    "bun",
+  );
+  assert.equal(
+    detectChannel("/usr/local/lib/node_modules/@zecalis/fapony"),
+    "npm",
+  );
+  assert.equal(detectChannel("/Users/u/src/fapony"), "git");
+  assert.deepEqual(channelCommand("bun"), [
+    "bun",
+    "add",
+    "-g",
+    "@zecalis/fapony@latest",
+  ]);
+  console.log("  ✓ detectChannel reads the install path");
+});
+
+test("testCmdUpdatePackageChannel", async () => {
+  const ran: string[][] = [];
+  let refreshed = 0;
+  const deps = (latest: string | null): UpdateDeps => ({
+    channel: "bun",
+    latest: async () => latest,
+    run: (cmd) => {
+      ran.push(cmd);
+    },
+    refresh: () => {
+      refreshed++;
+      return true;
+    },
+    git: () => {
+      throw new Error("the package channel never runs git");
+    },
+    exit: testExit,
+    isTTY: false,
+  });
+
+  // Newer release: installs it, then refreshes the clients.
+  const { out } = await captureOutput(() => cmdUpdate([], deps("999.0.0")));
+  assert.deepEqual(ran, [channelCommand("bun")]);
+  assert.equal(refreshed, 1);
+  assert.ok(out.includes("skills/plugins refreshed"), out);
+
+  // Same or older release: nothing installed, links still refreshed.
+  await captureOutput(() => cmdUpdate([], deps(readVersion())));
+  await captureOutput(() => cmdUpdate([], deps("0.0.1")));
+  assert.equal(ran.length, 1, "never reinstalls or downgrades");
+  assert.equal(refreshed, 3);
+
+  // Dry run touches nothing.
+  await captureOutput(() => cmdUpdate(["--dry-run"], deps("999.0.0")));
+  assert.equal(ran.length, 1);
+  assert.equal(refreshed, 3);
+
+  // Registry unreachable: exits without installing.
+  let code: number | null = null;
+  await captureOutput(async () => {
+    try {
+      await cmdUpdate([], deps(null));
+    } catch (e) {
+      code = (e as TestExit).code;
+    }
+  });
+  assert.equal(code, 1);
+  assert.equal(ran.length, 1);
+  console.log("  ✓ cmdUpdate package channel installs only a newer release");
 });

@@ -1,13 +1,17 @@
-// src/update.ts — self-update: fetch, preview, then fast-forward to the previewed ref.
+// src/update.ts — self-update by the channel fapony came from.
+// git checkout: fetch, preview, then fast-forward to the previewed ref.
+// bun/npm global: ask the registry for the latest version, then the package
+// manager installs it. Either way the clients are refreshed after: skill links
+// (a new skill linked, a removed one's dead link pruned) and OpenCode plugins.
 // ROOT must be the repo root: import.meta.dir is src/, one level below it.
-// Shows old → new version, recent commits, and warns if uncommitted changes.
 
-import { execSync, spawnSync } from "node:child_process";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { opencodePluginFiles } from "./install/opencode.js";
+import { refreshSkillLinks } from "./install/skills.js";
 import { isAffirmative } from "./util.js";
 
 /** Repo root (parent of src/) — where package.json and bun.lock live.
@@ -77,14 +81,65 @@ function defaultRefreshPlugins(): boolean {
   return true;
 }
 
+const PACKAGE = "@zecalis/fapony";
+
+/** How this fapony was installed — decides what `update` runs. Path first:
+ *  a global package can sit inside a git repo (a dotfiles $HOME), and
+ *  updating that repo instead would be wrong. */
+export type Channel = "git" | "bun" | "npm";
+
+export function detectChannel(root: string): Channel {
+  if (/[\\/]\.bun[\\/]install[\\/]global[\\/]/.test(root)) return "bun";
+  if (/[\\/]node_modules[\\/]/.test(root)) return "npm";
+  return "git";
+}
+
+/** The package manager command that installs the latest release. */
+export function channelCommand(ch: "bun" | "npm"): string[] {
+  return ch === "bun"
+    ? ["bun", "add", "-g", `${PACKAGE}@latest`]
+    : ["npm", "i", "-g", `${PACKAGE}@latest`];
+}
+
+/** Latest published version, or null when the registry can't be reached. */
+async function defaultLatest(): Promise<string | null> {
+  try {
+    const r = await fetch(`https://registry.npmjs.org/${PACKAGE}/latest`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) return null;
+    const v = ((await r.json()) as { version?: unknown }).version;
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function defaultRun(cmd: string[]): void {
+  execFileSync(cmd[0], cmd.slice(1), { stdio: "inherit", timeout: 300_000 });
+}
+
+/** Skill links, then OpenCode plugins. Skills run in-process: linkSkills
+ *  reads the skill/ listing from disk, so it already sees the new release. */
+function defaultRefresh(): boolean {
+  const skills = refreshSkillLinks(homedir);
+  return defaultRefreshPlugins() || skills;
+}
+
 /** Minimal seam for cmdUpdate — git runner (map args→result, throws on failure),
  *  prompt, exit, bun-install, and the post-pull OpenCode plugin refresh. Every
  *  field is used by both the default (production) path and the test path. */
 export interface UpdateDeps {
   git?: (args: string) => string;
   install?: () => void;
-  /** True only when plugins were actually refreshed (false = none installed, or failed). */
+  /** True only when skill links or plugins were refreshed (false = none installed, or failed). */
   refresh?: () => boolean;
+  /** Install channel — defaults to detectChannel(ROOT). */
+  channel?: Channel;
+  /** Latest published version (bun/npm channel); null = unreachable. */
+  latest?: () => Promise<string | null>;
+  /** Run a package manager command (bun/npm channel); throws on failure. */
+  run?: (cmd: string[]) => void;
   prompt?: (question: string, defaultVal?: string) => Promise<string>;
   exit?: (code: number) => never;
   /** Whether a human can answer a prompt — defaults to process.stdin.isTTY.
@@ -150,7 +205,7 @@ export async function cmdUpdate(
   const { dryRun, yes } = parseUpdateArgs(argv);
   const git = deps.git ?? defaultGit;
   const installFn = deps.install ?? defaultInstall;
-  const refreshFn = deps.refresh ?? defaultRefreshPlugins;
+  const refreshFn = deps.refresh ?? defaultRefresh;
   const promptFn = deps.prompt ?? defaultPrompt;
   const exitFn = deps.exit ?? ((code: number): never => process.exit(code));
   const isTTY = deps.isTTY ?? Boolean(process.stdin.isTTY);
@@ -164,12 +219,54 @@ export async function cmdUpdate(
 
   console.log("\n🔄 fapony update\n");
 
+  const channel = deps.channel ?? detectChannel(ROOT);
+  if (channel !== "git") {
+    const cmd = channelCommand(channel);
+    const oldVersion = readVersion();
+    const latest = await (deps.latest ?? defaultLatest)();
+    if (latest === null) {
+      console.error(
+        "❌ cannot reach the npm registry (offline?) — nothing changed.",
+      );
+      exitFn(1);
+    }
+    // Registry lag or a dev build can sit ahead of latest: never downgrade.
+    if (Bun.semver.order(latest as string, oldVersion) <= 0) {
+      console.log(`  ✓  Already up to date (${oldVersion}).`);
+      if (!dryRun) refreshFn();
+      return;
+    }
+    console.log(`  ${oldVersion} → ${latest} (${channel} global)`);
+    console.log(`  runs: ${cmd.join(" ")}`);
+    if (dryRun) {
+      console.log("\n  dry run — nothing installed.");
+      return;
+    }
+    if (!yes && isTTY) {
+      const answer = await promptFn("   Upgrade fapony now? (y/n)", "Y");
+      if (!isAffirmative(answer)) {
+        console.log("\n  Upgrade cancelled.");
+        return;
+      }
+    }
+    try {
+      (deps.run ?? defaultRun)(cmd);
+    } catch {
+      console.error(`\n❌ ${cmd.join(" ")} failed — nothing else changed.`);
+      exitFn(1);
+    }
+    const refreshed = refreshFn();
+    console.log(`\n  ✓  Updated ${oldVersion} → ${readVersion()}`);
+    if (refreshed) console.log("    ✓ client skills/plugins refreshed");
+    return;
+  }
+
   // --- sanity: must be a git repo ---
   const isRepo = gitQuiet("rev-parse --is-inside-work-tree");
   if (isRepo !== "true") {
     console.error(`❌ ${ROOT} is not a git repo — cannot self-update.`);
     console.error(
-      "   Installed from npm? Run: npm i -g @zecalis/fapony@latest && fapony install",
+      `   Installed another way? Run: npm i -g ${PACKAGE}@latest && fapony install`,
     );
     console.error(
       "   From source: git clone https://github.com/zecalis/fapony.git",
@@ -367,7 +464,7 @@ export async function cmdUpdate(
 
   console.log(`\n  What's installed now:`);
   console.log(`    ✓ fapony ${newVersion} @ ${newSha}`);
-  if (refreshed) console.log(`    ✓ client plugins refreshed`);
+  if (refreshed) console.log(`    ✓ client skills/plugins refreshed`);
   console.log(
     `    → run "fapony install --dry-run" to preview remaining client changes`,
   );
