@@ -54,6 +54,9 @@ const TEXT_MAX = 200;
 const LATER_MAX = 120;
 const SPEC_REFS_MAX = 3;
 const SPEC_TITLE_MAX = 50;
+// Labels still waiting on the dev (plan-with-pony): a proposal, a bar picked
+// before anyone agreed to it, and (guess) — what (Proposal) was called before.
+const OPEN_MARK = /\((?:Proposal|Threshold trial|guess)\)/;
 
 /** The one copy of the batching + closing rules, printed by `fapony plan
  *  <PLAN>`. A copy baked into each PLAN at seed time drifted (4 variants of the
@@ -334,16 +337,17 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
   }
   const hint = closureHint(items.lastTick);
   if (hint) console.log(hint);
-  // A criterion still marked (guess) when the next chunk starts gets measured
+  // A criterion still unconfirmed when the next chunk starts gets measured
   // against itself — the rule lived only in the skill. Whole file: the
-  // criteria sit in §3/§6, not on the one-line TL;DR chunk.
+  // criteria sit in §3/§6, not on the one-line TL;DR chunk. (guess) is the
+  // pre-label spelling of (Proposal); old plans keep warning the same.
   if (unchecked.length) {
-    const guesses = readFileSync(file, "utf8")
+    const open = readFileSync(file, "utf8")
       .split("\n")
-      .flatMap((l, i) => (l.includes("(guess)") ? [i + 1] : []));
-    if (guesses.length)
+      .flatMap((l, i) => (OPEN_MARK.test(l) ? [i + 1] : []));
+    if (open.length)
       console.log(
-        `⚠ ${guesses.length} (guess) mark(s) still in the plan (line ${guesses.slice(0, 5).join(", ")}${guesses.length > 5 ? ", …" : ""}) — confirm or measure them before the chunk that depends on them`,
+        `⚠ ${open.length} open mark(s) — (Proposal) / (Threshold trial) / (guess) — still in the plan (line ${open.slice(0, 5).join(", ")}${open.length > 5 ? ", …" : ""}) — confirm or measure them before the chunk that depends on them`,
       );
   }
   for (const w of tldrWarns(file)) console.log(`⚠ ${w}`);
