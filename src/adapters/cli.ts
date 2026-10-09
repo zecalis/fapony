@@ -6,7 +6,6 @@
 
 import { cmdAnalyze } from "../analyze/index.js";
 import { renderUsage, suggestCommand } from "../commands.js";
-import { cmdDebt } from "../debt/cli.js";
 import { cmdDigest } from "../digest/cli.js";
 import { cmdInit } from "../init.js";
 import { cmdInstall } from "../install.js";
@@ -38,8 +37,6 @@ export async function cliMain(): Promise<void> {
 
   if (cmd === "analyze") {
     cmdAnalyze(a);
-  } else if (cmd === "debt") {
-    cmdDebt(a);
   } else if (cmd === "lint-baseline") {
     cmdLintBaseline(a);
   } else if (cmd === "plan-seed") {

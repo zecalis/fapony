@@ -579,9 +579,7 @@ export async function collectDigest(
   sources.push({
     name: "hint-log",
     ok: hasHintLog,
-    detail: impact
-      ? `${impact.fired} fired this window (${impact.debt.shown} debt shown)`
-      : "no hints recorded",
+    detail: impact ? `${impact.fired} fired this window` : "no hints recorded",
   });
 
   // classify mem rows

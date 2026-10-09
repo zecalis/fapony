@@ -20,7 +20,6 @@ fapony/
     plan-with-pony/             # draft plan + spec จาก conversation (pipe to any agent's stdin)
     review-pony/                # review as verification + scope facts before (review-seed), verdict after
     lookup-before-edit/         # lookup unfamiliar files (review-seed --files) before reading/editing them
-    define-convention/            # turn a not-yet-migrated pattern into a tracked convention (interview + dry-run debt)
     move-to-done/               # archive PLAN เข้า .fapony/done/ หลัง ship
     git-commit-conventional/    # commit ทีละขั้นที่จบ + conventional message
     git-ship/                   # push branch, open PR, merge, reset branch onto base
@@ -32,13 +31,13 @@ fapony/
     core/               # pure layer — no imports back to features/adapters/db-store (PLAN-lib-layer)
       config.ts         # Config/Run/Event types + defaults + getters + load (single source; db/* are shims)
       defaults.ts       # DEFAULT_SAFETY_DENY (single source)
-      fapony-dir.ts     # faponyDirFrom — nearest .fapony/ up to the git root (plans + conventions)
+      fapony-dir.ts     # faponyDirFrom — nearest .fapony/ up to the git root (plans)
       hint-log.ts       # hint-log pure helpers (hintLogPath)
       hook-helpers.ts   # hook pure helpers
       enums.ts          # REASON_CODES/REGIME_CODES
       types.ts          # ToolResult + usage/result types
       util.ts           # capLines + shared pure utils
-      parse.ts / safety.ts / format.ts / pricing.ts / debt-types.ts / debt-format.ts
+      parse.ts / safety.ts / format.ts / pricing.ts
     db/               # SQLite store only — pure parts live in core/config.ts
       store.ts        # openDb + schema/migration (PRAGMA user_version) + CRUD
       index.ts        # barrel re-export (compat — src/ imports core/config or db/store directly)
@@ -64,7 +63,7 @@ fapony/
     context/           # project-health context block, keyed by files[] (any caller)
       projectHealth.ts # buildProjectHealthContext() — pure over StatsData, ~15 lines max; computeModelFit() (regime×model right-sizing, min-N=5) read by `fapony stats` — plan-seed stopped citing it 2026-09-22 (frozen ledger; cross-model ranking claims are off the table)
       index.ts         # barrel re-export
-    analyze/            # fapony analyze — one file per concern (mirrors install/, debt/)
+    analyze/            # fapony analyze — one file per concern (mirrors install/)
       types.ts          # ImportGraph / Finding / BlastEntry
       criteria.ts       # isTestFile / isBarrelSource / isTestedThroughBarrels
       discover.ts       # SCAN_EXTS / isSkippedDir / collectSourceFiles
@@ -79,7 +78,6 @@ fapony/
       index.ts          # barrel re-export
     map.ts              # extractExports() — on-demand source index, library only; the `fapony map` command was deleted once plan-seed/review-seed were its only callers (see PLAN-code-map)
     detect.ts           # runtime test runner detection (bun/npm/pnpm/yarn) from package.json + lockfile — test-only caller left (was the Stop hook)
-    conventions-seed.ts # init-time wrapper detector → writes .fapony/conventions.json — reads snapshot only, never touches history
     seed/               # seed commands — plan-seed + review-seed + shared primitives
       primitives.ts     # shared git helpers (execGit/gitOk/gitValue), capLines, SIG_MAX, SeedError
       plan-seed.ts      # fapony plan-seed <name> [--spec] [--scope <path>[,<path>]]... — writes PLAN(+SPEC): frontmatter, 8 empty sections, §8 prior art, Context (fapony: fael decisions + existing-in-scope), existing-plans stdout list; SPEC chunks hold signatures, hard caps PLAN ≤ ~60 / SPEC ≤ 200
@@ -87,14 +85,6 @@ fapony/
     price/              # model pricing data — fetch + resolve
       fetch.ts          # fetchPricing() — HTTP fetch from upstream price table
       resolve.ts        # resolvePrice() — lookup per-model cost from cached data
-      index.ts          # barrel re-export
-    debt/               # fapony debt — layer 3 "ไฟล์ไหนยังไม่ย้าย": live convention scan, never persisted; caller: fapony debt
-      types.ts          # DebtReport/Convention/Promotion + caps (DEBT_FILE_CAP, PROMOTION_THRESHOLD, ZONE_*)
-      load.ts           # resolveConventionsPath + loadConventions
-      scan.ts           # compile + debtScan + debtForFile
-      promotion.ts      # findPromotions + formatPromotions (fael issue/decision + ledger fail recurrence)
-      format.ts         # zone grouping + formatDebt
-      cli.ts            # worktreeOf + cmdDebt
       index.ts          # barrel re-export
     hook.ts             # shim re-exporting adapters/hooks/* (see adapters/ above)
     init.ts            # fapony init — scaffold .fapony/{plan,done,spec,evidence.json} + plan-loop rules into AGENTS.md

@@ -23,7 +23,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cmdDebt } from "../src/debt/index.js";
 import { cmdPlanSeed } from "../src/seed/plan-seed.js";
 import { renderSeed } from "../src/seed/review-seed.js";
 import { captureLogs, withTempRepo, withTmpDb } from "./helpers.js";
@@ -34,8 +33,6 @@ const read = (rel: string): string => readFileSync(join(root, rel), "utf8");
 /** The list flags of PLAN-comma-x §2 — the closed inventory (the 3 mem
  *  flags left with `fapony mem` when memory moved to fael). */
 const TABLE: Record<string, { flag: string; a: string; b: string }> = {
-  "debt --files": { flag: "--files", a: "src/a.ts", b: "src/b.ts" },
-  "debt --id": { flag: "--id", a: "service-errors", b: "money-format" },
   "review-seed --files": {
     flag: "--files",
     a: "src/multi.ts",
@@ -56,83 +53,17 @@ function shapeArgs(flag: string, a: string, b: string, shape: Shape): string[] {
   return [flag, `${a}${sep}${b}`];
 }
 
-test("testCliListFlagTableIsTheSixFlags", () => {
+test("testCliListFlagTableIsTheFourFlags", () => {
   // The table IS the scope (§2). A tenth row needs a measured failure, not
   // a guess — a single-value flag in here would fake a contract it never had.
   assert.deepEqual(Object.keys(TABLE).sort(), [
-    "debt --files",
-    "debt --id",
     "plan-seed --scope",
     "review-seed --body",
     "review-seed --callers",
     "review-seed --files",
   ]);
   assert.equal(SHAPES.length, 4);
-  console.log("  ✓ contract table = the 6 list flags × 4 shapes");
-});
-
-// --- debt --files / --id: direct cmdDebt --json on a seeded repo ---
-
-test("testCliListFlagDebt", () => {
-  withTempRepo((repo) => {
-    mkdirSync(join(repo, ".fapony"), { recursive: true });
-    writeFileSync(
-      join(repo, ".fapony", "conventions.json"),
-      `${JSON.stringify(
-        {
-          conventions: [
-            {
-              id: "service-errors",
-              rule: "use failWith instead of throw new Error",
-              where: "src",
-              stale: "throw new Error",
-            },
-            {
-              id: "money-format",
-              rule: "use formatMoney instead of toFixed",
-              where: "src",
-              stale: "toFixed",
-            },
-          ],
-        },
-        null,
-        2,
-      )}\n`,
-    );
-    mkdirSync(join(repo, "src"), { recursive: true });
-    writeFileSync(join(repo, "src", "a.ts"), 'throw new Error("x");\n');
-    writeFileSync(join(repo, "src", "b.ts"), "toFixed(2);\n");
-    const json = <T>(args: string[]): T =>
-      withTmpDb(() => JSON.parse(captureLogs(() => cmdDebt(args)))) as T;
-
-    const filesSpec = TABLE["debt --files"];
-    const idSpec = TABLE["debt --id"];
-    for (const shape of SHAPES) {
-      const files = json<{ files: { file: string }[] }>([
-        repo,
-        ...shapeArgs(filesSpec.flag, filesSpec.a, filesSpec.b, shape),
-        "--json",
-      ]);
-      const paths = files.files.map((f) => f.file);
-      assert.deepEqual(
-        paths.sort(),
-        [filesSpec.a, filesSpec.b].sort(),
-        `debt --files ${shape}`,
-      );
-
-      const ids = json<{ entries: { conv: { id: string } }[] }>([
-        repo,
-        ...shapeArgs(idSpec.flag, idSpec.a, idSpec.b, shape),
-        "--json",
-      ]).entries.map((e) => e.conv.id);
-      assert.deepEqual(
-        ids.sort(),
-        [idSpec.a, idSpec.b].sort(),
-        `debt --id ${shape}`,
-      );
-    }
-  });
-  console.log("  ✓ debt --files/--id × 4 shapes → same set (comma split live)");
+  console.log("  ✓ contract table = the 4 list flags × 4 shapes");
 });
 
 // --- review-seed --files / --body / --callers: one git fixture ---
@@ -359,7 +290,6 @@ test("testCliListFlagDocsShowCommaShape", () => {
   const readme = read("README.md");
   for (const literal of [
     "--files f1,f2",
-    "--id a,b",
     "[--scope <path>[,<path>]]...",
     "--body sym[,sym]",
     "--callers sym[,sym]",

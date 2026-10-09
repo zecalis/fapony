@@ -5,7 +5,6 @@ import { execSync } from "node:child_process";
 import { existsSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { seedConventionsFile } from "./conventions-seed.js";
 import { CONFIG_FILENAME, FAPONY_DIR } from "./core/config.js";
 import { initProject } from "./init.js";
 import { isAffirmative } from "./util.js";
@@ -185,15 +184,6 @@ export async function cmdSetup(deps: SetupDeps = {}): Promise<void> {
     if (!existsSync(faponyDir)) {
       try {
         initProject(worktreePath);
-        const seed = await seedConventionsFile(worktreePath);
-        if (!seed.kept) {
-          console.log(
-            `  ✓  Conventions: ${seed.eslintRows} from eslint, ${seed.wrapperRows} from wrappers`,
-          );
-        }
-        for (const s of seed.skipped) {
-          console.log(`  ⚠  eslint config ${s}`);
-        }
         console.log(`  ✓  Scaffolded .fapony/ in ${worktreePath}`);
       } catch (e) {
         console.log(`  ⚠  Scaffold skipped: ${(e as Error).message}`);

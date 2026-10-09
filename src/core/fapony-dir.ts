@@ -1,5 +1,5 @@
-// src/core/fapony-dir.ts — where a repo's `.fapony/` (plan/ done/ spec/
-// conventions.json) lives: the nearest one walking up from cwd, bounded by the
+// src/core/fapony-dir.ts — where a repo's `.fapony/` (plan/ done/ spec/)
+// lives: the nearest one walking up from cwd, bounded by the
 // git root, else `<root>/.fapony`. Monorepos keep one per app (apps/x/.fapony).
 
 import { existsSync, realpathSync } from "node:fs";

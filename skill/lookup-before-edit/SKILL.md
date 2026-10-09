@@ -36,11 +36,10 @@ per file, the rest as `(+N)`, so the total is still readable. That is your entry
   the later files' signatures. Many files at once → split the call, don't trust a cut list.
 - No `fapony` CLI or the call errors → read the file normally and carry on. A hint, not a gate.
 
-## History + debt (same paths, two calls)
+## History (same paths)
 
 - fael `find` with `files: [<same paths>]` (or `fael find --files <paths>`) — "what was ever decided about
   this file". fael already attaches these rows when you Read a file, so call it only for paths you skip reading.
-- `fapony debt --where <dir|file>` — conventions this path still violates; empty until `conventions.json` exists.
 
 ## After the lookup
 

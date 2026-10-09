@@ -1,8 +1,8 @@
 // src/analyze/index.ts — barrel for `fapony analyze`: structural health
 // diagnosis for a TS/JS project.
 //
-// Layout mirrors src/install/ and src/debt/: types + one file per concern,
-// CLI entry in cli.ts. Callers import this barrel directly (same as debt/).
+// Layout mirrors src/install/: types + one file per concern, CLI entry in
+// cli.ts. Callers import this barrel directly.
 
 export * from "./barrels.js";
 export * from "./blast.js";
