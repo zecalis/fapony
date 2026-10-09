@@ -50,6 +50,14 @@ That is the fact-gathering, without the file — roughly 1k tokens, deterministi
 
 Go on to Phase 1 only when the work is a feature with a life beyond today.
 
+**A feature with nothing that says "now" is parked, not drafted.** Offer the park in one line when
+its Why now (Phase 2) would be empty in all three forms, or it hangs on an "after X" that hasn't
+happened. No outside users is not the test — infra, an internal data model, test tooling pass on
+the damage they prevent or the hypothesis they make testable. The dev decides; "draft anyway"
+overrides it in one line. Park = the seeded plan with `parked_because: <evidence that would wake
+it>` in its frontmatter, then `fapony plan park <PLAN> --apply`. Park is not reject: `fapony plan`
+still lists it.
+
 ## Adopt mode — start from someone else's doc
 
 Trigger: `/plan-with-pony adopt <doc>` — `<doc>` is a path to a handoff, client
@@ -64,7 +72,7 @@ request, ticket, or todo someone outside this workflow wrote. It is input, not a
   line instead of re-asking from zero.
 - **Phase 2 maps the doc into plan sections 1–8.** Doc prose enters §1/§2/§3 as
   cited context lines, never as pre-ticked checkboxes. Tag every kept doc claim
-  `(from doc)`, everything the doc doesn't say `(guess)`. Once you truth-checked a
+  `(from doc)`, everything the doc doesn't say `(Proposal)`. Once you truth-checked a
   `(from doc)` line against the code, drop the tag.
 - **The anchor comes from the plan file, never from this text.** The adopted (or
   seeded) PLAN already carries a `**Handoff (fael):** anchor \`plan:<name>\`` line
@@ -121,12 +129,8 @@ then shipped) — the seed that lands next to a shipped decision without knowing
 expensive mistake. The CLI resolves plan-dir/spec-dir and refuses to overwrite (pick `-v2` — see
 Phase 2).
 
-**§2/§5 arrive empty on purpose (2026-09-18).** They used to hold a repetition scan and analyze
-findings; measured over every plan that ever used them, §5 printed "no findings" 3 times out of 3
-and §2 printed a naming observation nobody cited — `--scope` narrows to the files about to change
-while both producers report whole-repo properties. A judgment heading pre-filled with a shrug
-teaches the reader that every seeded line is noise. Facts come from the Phase −1 commands run on
-the real scope instead.
+**§2/§5 arrive empty on purpose (2026-09-18):** their old whole-repo scans were never cited (§5 said
+"no findings" 3/3). Facts come from the Phase −1 commands run on the real scope instead.
 
 So the seed buys you structure; the draft budget goes on judgment:
 
@@ -142,8 +146,8 @@ So the seed buys you structure; the draft budget goes on judgment:
 
 Write the full draft **now**, all eight sections, from the Phase 0 harvest + the Phase 1 answer
 — **or, when Phase 1.5 seeded a file, complete that file instead of writing from scratch**
-(its frontmatter and Context block are already there). Fill every section — guessing where
-you have to.
+(its frontmatter and Context block are already there). Fill every section — a labelled Proposal
+where you have to.
 
 ```
 1. Goal (why)                          5. Risks & Escape hatches (if it fails)
@@ -152,8 +156,35 @@ you have to.
 4. Constraints / Hard rules            8. References
 ```
 
-**Mark every guess `(guess)`.** A marked guess is the whole technique; an unmarked one is how
-a plan picks up requirements nobody asked for (hard rule 1).
+**Label what each line rests on** — the labels are the whole technique (hard rule 1):
+- `(Observed: <command + result | symbol | fael id>)` — evidence attached; none attached = Proposal
+- `(Proposal)` — your option + why, waiting on the dev (old plans spell it `(guess)`)
+- `(Threshold trial)` — a bar set before measuring that the dev hasn't agreed to; `agreed` once they do
+- `(Decision <date>)` — only what the dev chose, never what you expect them to
+
+**Four lines every draft carries — the dev corrects them; they are never questions:**
+
+```
+§1 Home: <closest thing that exists + the command that found it> → extend it | new, because <it can't hold X>
+§1 Why now: <traceable evidence: who/what uses it, how often, measured when> | <damage it prevents> | <hypothesis it makes testable> | "no evidence yet"
+§3 ≥ 1 criterion runs on real input (a customer file, a live route) or is a case that must fail; a vendor contract cites the vendor's doc
+§6 Measurement (only with a measuring step): command showing the data exists today + its count · date it reaches N at today's rate · baseline taken before the change ships · no chunk here touches that data
+```
+
+**Home is a place in the code, not a person** — the table, derived value, route or module the plan
+extends or creates (the dev owns every plan). Grade each line before handing the draft back:
+
+| Line | Passes | Fails |
+|---|---|---|
+| Home | a real table/route/module/symbol + the command that checked it (review-seed, grep), or `(Proposal)` when unchecked | `Home: this plan` · "the system already has X" with no source |
+| Why now | traceable evidence, or "no evidence yet" said plainly | "best practice" · "agents will use it" |
+| Done | ≥ 1 criterion on real input or a failing case | "implementation complete" · a grep for text |
+| Measurement | data source + counting command + today's count | a KPI nobody knows where to pull from |
+
+Before: "Show the outstanding balance on page X". After: `Home: outstanding is computed in 7 places
+(review-seed --callers outstanding) → fold into openBalances() first, page X reads it (Proposal)`.
+Name symbols, not `file:line` — line refs drift first. "There is no X yet" cites the search that
+came back empty.
 
 **Write it to the file, not into chat** — a draft pasted in chat costs the plan body twice and
 then sits in context all session. Corrections land as small edits instead of a re-draft.
@@ -247,16 +278,16 @@ read it. Section headings stay as the template has them, and **frontmatter keys 
 English** (`status: blocked`, not a translation): they are an enum a tool reads. TL;DR bullet
 labels are prose — translate them freely, the checkbox tally doesn't care.
 
-## Phase 3 — Hand back the guesses, not the plan
+## Phase 3 — Hand back the proposals, not the plan
 
 Then — the part that must not be dropped — invite corrections in chat, in ~8 lines:
 
 - one line: what this plan does
-- **every `(guess)` in the draft, one bullet each** — this list is what the dev actually corrects,
+- **every `(Proposal)` and `(Threshold trial)` in the draft, one bullet each** — this list is what the dev actually corrects,
   and it is the only reason the draft was ever shown in chat
 - the file path, then: **"Tell me what's wrong with it"** — never "is this ok"
 
-> "Written to <planDir>/PLAN-<feature>.md. Guessed: <g1>, <g2>, <g3>. **Tell me what's wrong** —
+> "Written to <planDir>/PLAN-<feature>.md. Proposed: <p1>, <p2>, <p3>. **Tell me what's wrong** —
 > especially those. Blank sections are fine; we can decide those while building. Change it whenever
 > building teaches you something — that's the plan working, not the plan failing."
 
@@ -301,9 +332,10 @@ Then draft `<specDir>/SPEC-<feature>.md` (same config lookup as Phase 2) by:
 Everything above is procedure. These three are the ones that break the plan when broken —
 the rest of this file states them where they apply:
 
-1. **Every guess is labelled `(guess)` — and listed back in chat** (Phase 3). The list is what
-   the dev corrects; unlabelled invention is how a plan picks up requirements nobody asked for
-2. **What wasn't discussed or corrected = not in the plan** — a labelled guess the dev fixed or
+1. **Anything not Observed or decided is labelled `(Proposal)` / `(Threshold trial)` — and listed
+   back in chat** (Phase 3). The list is what the dev corrects; unlabelled invention is how a plan
+   picks up requirements nobody asked for
+2. **What wasn't discussed or corrected = not in the plan** — a labelled Proposal the dev fixed or
    kept counts as discussed; silent additions never do
 3. **All eight sections exist, in a file, not in chat** — `_TBD — decide while building_` is a
    legitimate value; a missing heading is not

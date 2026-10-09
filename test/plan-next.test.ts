@@ -602,7 +602,7 @@ test("testPlanWarnsOnOpenGuesses", () => {
     );
     assert.match(
       run(dir, ["PLAN-g.md"]),
-      /⚠ 1 \(guess\) mark\(s\) still in the plan \(line 12\)/,
+      /⚠ 1 open mark\(s\) .* still in the plan \(line 12\)/,
     );
     writeFileSync(
       join(p, "PLAN-h.md"),
@@ -611,6 +611,31 @@ test("testPlanWarnsOnOpenGuesses", () => {
     assert.ok(
       !run(dir, ["PLAN-h.md"]).includes("(guess)"),
       "no guess, no warn",
+    );
+  });
+});
+
+// The labels that replaced (guess) warn the same way; a plan written before
+// them keeps the count it had — one per line, so a line with two marks is one.
+test("testPlanWarnsOnOpenProposalsAndKeepsOldGuessCount", () => {
+  withTempRepo((dir) => {
+    const p = join(dir, ".fapony", "plan");
+    mkdirSync(p, { recursive: true });
+    writeFileSync(
+      join(p, "PLAN-old.md"),
+      `${plan("O", "", "- [x] chunk 1 — x\n- [ ] chunk 2 — y (guess)")}\n## 3. Done criteria\n- p95 < 200ms (guess) on 30 runs (guess)\n- export opens in Excel\n## 6. Steps\n- measure (guess)\n`,
+    );
+    assert.match(
+      run(dir, ["PLAN-old.md"]),
+      /⚠ 3 open mark\(s\) .* \(line 9, 12, 15\)/,
+    );
+    writeFileSync(
+      join(p, "PLAN-new.md"),
+      `${plan("N", "", "- [x] chunk 1 — x\n- [ ] chunk 2 — y")}\n## 1. Goal\n- Home: openBalances() (Proposal)\n- Home: ledger table (Observed: review-seed --files src/ledger.ts)\n## 3. Done criteria\n- hit rate ≥ 40% (Threshold trial)\n- p95 < 200ms (Threshold agreed)\n- ship it (Decision 2026-10-10)\n`,
+    );
+    assert.match(
+      run(dir, ["PLAN-new.md"]),
+      /⚠ 2 open mark\(s\) .* \(line 12, 15\)/,
     );
   });
 });
