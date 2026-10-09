@@ -190,6 +190,24 @@ export const chunkLabel = (item: string): string | null =>
   )?.[1] ??
   null;
 
+/** The TL;DR lines that are chunk `label`: its own line, or — with none —
+ *  the flat siblings it was split into (2 → 2a, 2b). With a `2` line, `2b`
+ *  is a leftover, not a part. */
+export const chunkLines = (items: string[], label: string): string[] => {
+  const want = label.toLowerCase();
+  const lbl = (l: string) => chunkLabel(l)?.toLowerCase();
+  return items.some((l) => lbl(l) === want)
+    ? items.filter((l) => lbl(l) === want)
+    : items.filter((l) => lbl(l)?.replace(/[a-z]$/, "") === want);
+};
+
+/** Chunk `label` is closed once every line of it is ticked or dropped — the
+ *  one answer for `(after …)`, cross-plan `(after x:N)` and plan check. */
+export const chunkClosed = (items: string[], label: string): boolean => {
+  const mine = chunkLines(items, label);
+  return mine.length > 0 && mine.every((l) => TICK_RE.test(l));
+};
+
 // `(after 2, vela-jobs:j4)` → ["2", "vela-jobs:j4"]; null = no marker, `—` /
 // `none` = waits on nothing. A bare label names a chunk of this plan only.
 export const afterRefs = (line: string): string[] | null => {
@@ -266,10 +284,9 @@ const afterWarns = (
   all: string[],
   name: (l: string) => string,
 ): string[] => {
-  const labels = new Set(all.map((l) => chunkLabel(l)?.toLowerCase()));
   const dirs = [dirname(file), doneDir, parkedDir].filter(Boolean);
   const unmet = (ref: string): boolean => {
-    if (!ref.includes(":")) return !labels.has(ref);
+    if (!ref.includes(":")) return chunkLines(all, ref).length === 0;
     const base = `PLAN-${ref.split(":")[0].replace(/^plan-/, "")}.md`;
     return !dirs.some((d) => existsSync(join(d, base)));
   };
@@ -529,16 +546,11 @@ export const collectClosedBlockerWarns = (active: string[]): string[] => {
       const label = new RegExp(`^\\s*(?:chunk[\\s-]*)?(${LABEL})\\b`, "i")
         .exec(after)?.[1]
         ?.toLowerCase();
-      const { checked, unchecked } = firstSectionItems(join(planDir, ref));
-      // no `2` line = split into flat siblings (2 → 2a, 2b): closed once all
-      // are; with a `2` line, `2b` is a leftover, not a part
-      const lbl = (l: string) => chunkLabel(l)?.toLowerCase();
-      const all = [...checked, ...unchecked];
-      const own = all.some((l) => lbl(l) === label)
-        ? (l: string) => lbl(l) === label
-        : (l: string) => lbl(l)?.replace(/[a-z]$/, "") === label;
+      const { checked, unchecked, ordered } = firstSectionItems(
+        join(planDir, ref),
+      );
       const closed = label
-        ? checked.some(own) && !unchecked.some(own)
+        ? chunkClosed(ordered, label)
         : checked.length > 0 && unchecked.length === 0;
       if (closed)
         warns.push(
@@ -561,7 +573,7 @@ export const collectPlaceholderWarns = (active: string[]): string[] => {
   }
   return [...files].flatMap((f) => {
     const at = readFileSync(f, "utf8")
-      .replace(/```[\s\S]*?```/g, (b) => b.replace(/[^\n]/g, " "))
+      .replace(/(```|~~~)[\s\S]*?\1/g, (b) => b.replace(/[^\n]/g, " "))
       .replace(/`[^`\n]*`/g, (b) => " ".repeat(b.length))
       .split("\n")
       .flatMap((l, i) => (l.includes("(agent fills in") ? [i + 1] : []));

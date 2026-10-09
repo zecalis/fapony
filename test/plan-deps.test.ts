@@ -306,7 +306,7 @@ test("testPlaceholderWarnsInPlanAndCitedSpec", () => {
     mkdirSync(join(dir, ".fapony", "spec"), { recursive: true });
     writeFileSync(
       join(dir, ".fapony", "spec", "SPEC-a.md"),
-      "# SPEC-a — (agent fills in a title)\n\n```\n(agent fills in)\n```\n## (agent fills in — shapes)\n",
+      "# SPEC-a — (agent fills in a title)\n\n```\n(agent fills in)\n```\n## (agent fills in — shapes)\n~~~\n(agent fills in)\n~~~\n",
     );
     inRepo(dir, () => {
       const w = collectPlaceholderWarns(

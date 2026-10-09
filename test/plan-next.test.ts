@@ -719,12 +719,17 @@ test("testPlanBlockedOffersNoNext", () => {
       ),
     );
     writeFileSync(join(p, "PLAN-a.md"), plan("A", "", "- [ ] chunk 1 — do a"));
+    writeFileSync(
+      join(p, "PLAN-zz.md"),
+      plan("Z", "status: blocked\nblocked_by: x\n", "- [ ] chunk 1 — z"),
+    );
     const all = run(dir, []);
+    assert.match(all, /PLAN-forms\.md[^\n]*\n- PLAN-zz\.md/, "sorted by name");
     assert.match(all, /1 active plan\(s\)/);
     assert.ok(!all.includes("form_template"), all);
     assert.match(
       all,
-      /## blocked \(1\) — no chunk offered\n- PLAN-forms\.md — 0\/1 chunks · blocked_by: real forms from byyeah/,
+      /## blocked \(2\) — no chunk offered\n- PLAN-forms\.md — 0\/1 chunks · blocked_by: real forms from byyeah/,
     );
     const one = run(dir, ["PLAN-forms.md"]);
     assert.match(one, /⚠ blocked \(0\/1 chunks\) — blocked_by: real forms/);

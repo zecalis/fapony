@@ -259,3 +259,49 @@ test("testPlanListsWaitingChunksApart", () => {
     }),
   );
 });
+
+test("testSplitChunkClosesWhenAllPartsDo", () => {
+  // chunk 2 split into 2a/2b: (after 2) and (after x:2) meet once both close;
+  // with a `2` line, a `2b` beside it is a leftover and does not hold it
+  const items = (b: string) => [
+    "- [x] chunk 2a — a",
+    `- [${b}] chunk 2b — b`,
+    "- [ ] chunk 3 — c (after 2)",
+  ];
+  assert.deepEqual(pickChunks(items(" "), "main").next, 1);
+  assert.equal(pickChunks(items("x"), "main").next, 2);
+  assert.equal(
+    pickChunks(
+      ["- [x] m2 — a", "- [ ] m2b — left from m2", "- [ ] m3 — c (after m2)"],
+      "main",
+    ).next,
+    1,
+    "m2b and m3 both ready — m2 is closed",
+  );
+  withTempRepo((dir) => {
+    const p = join(dir, ".fapony", "plan");
+    mkdirSync(p, { recursive: true });
+    writeFileSync(
+      join(p, "PLAN-v.md"),
+      "---\nkind: unit\n---\n\n# V\n\n## TL;DR\n- [x] chunk 2a — a\n- [x] chunk 2b — b\n",
+    );
+    const w = join(p, "PLAN-w.md");
+    writeFileSync(
+      w,
+      "---\nkind: unit\n---\n\n# W\n\n## TL;DR\n- [ ] chunk 1 — w (after v:2)\n- [x] chunk 4a — x\n- [ ] chunk 5 — y (after 4)\n",
+    );
+    const prev = process.cwd();
+    process.chdir(dir);
+    try {
+      initPlanStore(dir);
+      assert.equal(
+        pickChunks(["- [ ] chunk 1 — w (after v:2)"], "main").next,
+        0,
+      );
+      // (after 4) names split part 4a — a chunk, not "names no chunk"
+      assert.doesNotMatch(tldrWarns(w).join("\n"), /names no chunk/);
+    } finally {
+      process.chdir(prev);
+    }
+  });
+});

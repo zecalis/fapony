@@ -18,7 +18,12 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { MemRow } from "../fael.js";
 import { doneDir, planDir } from "./store.js";
-import { afterRefs, chunkLabel, firstSectionItems } from "./sweep.js";
+import {
+  afterRefs,
+  chunkClosed,
+  chunkLabel,
+  firstSectionItems,
+} from "./sweep.js";
 
 const WIP_RE = /\(wip\b\s*([^)]*)\)/i;
 // a chunk waiting on a person read as `next` sent agents to stall on it — in
@@ -54,9 +59,7 @@ export const closedInPlan = (ref: string): boolean => {
   if (doneDir && existsSync(join(doneDir, base))) return true;
   return (
     !!planDir &&
-    firstSectionItems(join(planDir, base)).checked.some(
-      (l) => chunkLabel(l)?.toLowerCase() === lbl,
-    )
+    chunkClosed(firstSectionItems(join(planDir, base)).ordered, lbl)
   );
 };
 
@@ -64,18 +67,12 @@ export const closedInPlan = (ref: string): boolean => {
 export function pickChunks(items: string[], branch: string | null): Picked {
   const open = (l: string) => /^\s*[-*]\s+\[\s\]/.test(l);
   const label = (l: string) => chunkLabel(l)?.toLowerCase() ?? null;
-  const closed = new Set(
-    items
-      .filter((l) => !open(l))
-      .map(label)
-      .filter(Boolean),
-  );
   const waits = (i: number): string[] => {
     const refs = afterRefs(items[i]);
     if (!refs)
       return i > 0 && open(items[i - 1]) ? [label(items[i - 1]) ?? "?"] : [];
     return refs.filter((t) =>
-      t.includes(":") ? !closedInPlan(t) : !closed.has(t),
+      t.includes(":") ? !closedInPlan(t) : !chunkClosed(items, t),
     );
   };
 

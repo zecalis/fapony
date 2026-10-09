@@ -439,9 +439,9 @@ function showAll(): void {
     return;
   }
   const shipped = new Set(shippedNotMoved());
-  const blocked = files.filter(
-    (f) => parsePlanFrontmatter(f).status === "blocked",
-  );
+  const blocked = files
+    .filter((f) => parsePlanFrontmatter(f).status === "blocked")
+    .sort();
   const active = files
     .filter((f) => !shipped.has(basename(f)) && !blocked.includes(f))
     .sort(
