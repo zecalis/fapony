@@ -7,7 +7,7 @@ description: Ship a branch end to end — push it, open a PR with an AI-drafted 
 
 You are shipping a branch: push it, open a PR with a drafted title/body, merge it, put the
 branch back in line with the base.
-Commits are one conventional line per finished step — see [git-commit-conventional](../git-commit-conventional/SKILL.md).
+Commits are one conventional line per finished step (`fix: …`, `feat: …`), made when the step is done.
 Never re-split them by concern here; one concern per **PR** is the boundary.
 
 ## Where to stop
@@ -38,6 +38,10 @@ review may have added some.
 2. `git branch --show-current` — refuse if this is `main`/`master` (or the repo's default branch):
    tell the user to branch first
 3. `git log <default-branch>..HEAD --oneline` — the commits this PR will contain
+4. fael, if this session has it: `fael find --kind issue --files "$(git diff --name-only <default-branch>...HEAD | paste -sd, -)"`
+   — issues still open on the files this PR touches. You judge which ones this branch fixed
+   (fael never infers): for each, `fael close <id> "<cause> → <fix>; guard <test>"` and cite
+   `fael:<id>` in the PR body. Leave the rest open. A net under the fix, not instead of closing at the fix.
 
 ## Draft
 
