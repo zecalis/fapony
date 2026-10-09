@@ -161,12 +161,13 @@ fixed: 1, 2 · skipped: 3 (PLAUSIBLE — could not reach the failing state)
 ```
 
 Fixing changes what actually shipped, not what the review found — re-run pass 4's citation
-check on the new state before calling it done, but don't re-run the whole review. Record
-what you found, not the post-fix state (the row's text can say the fix was applied).
+check on the new state before calling it done, but don't re-run the whole review. A finding
+`--fix` applied is not recorded in fael — the commit and PR already say it, and an issue born
+fixed only gets closed later by a row restating it.
 
 ## After: record what the next session needs (fael)
 
-If a blocker/major CONFIRMED finding survived, or the verdict is rework/reject,
+If a blocker/major CONFIRMED finding survived (and `--fix` did not apply it), or the verdict is rework/reject,
 call fael's `add` tool once (or `fael add` in the shell), after the report is shown. Don't block the report on it,
 and don't let it change the report's content. Clean reviews (ship, nit-only
 findings) record nothing — there is nothing the next session needs to find.
@@ -178,7 +179,8 @@ decided, not that a review happened. files are the repo-relative paths actually
 walked — required, a row without them is unfindable. No fael in this session
 (no tool, no `fael` on PATH) = skip the record, never install it uninvited.
 If `add` errors, say so in one line and move on — never re-run a review
-because storage failed.
+because storage failed. Whoever fixes a recorded issue later closes it by its id —
+`fael close <id> "fixed in <sha>"` — never a second row retelling the finding.
 
 ---
 
