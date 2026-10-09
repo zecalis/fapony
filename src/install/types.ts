@@ -23,7 +23,7 @@ export function defaultExit(code: number): never {
   return process.exit(code);
 }
 
-export type SkillLinkAction = "linked" | "already" | "conflict";
+export type SkillLinkAction = "linked" | "already" | "conflict" | "pruned";
 
 export interface SkillLinkResult {
   name: string;

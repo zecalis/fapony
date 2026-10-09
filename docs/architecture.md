@@ -126,7 +126,7 @@ fapony/
       detect.ts         # which clients exist on this machine
       skills.ts         # linkSkills() — symlinks skill/<name>/ into ~/.claude/skills, never overwrites
       types.ts          # InstallDeps / defaultExit / INSTALL_ROOT
-    update.ts            # fapony update — fetch, preview, confirm, then `merge --ff-only` to the previewed ref (tripwire test คุม ROOT) + spawn a fresh install to refresh opencode's baked plugins
+    update.ts            # fapony update — by channel: git (fetch, preview, confirm, `merge --ff-only`; tripwire test คุม ROOT) or bun/npm global (`@latest` when newer); then re-link skills (prune dead links) + spawn a fresh install to refresh opencode's baked plugins
     util.ts               # templateArgs / fillPrompt / isAffirmative / minutesBetween / avg
     test.ts               # self-check ตัวเอง (thin wrapper → test/index.ts)
   test/
