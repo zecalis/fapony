@@ -2,7 +2,8 @@
 //
 // Reads ~/.codex/sessions/**/*.jsonl (one file per rollout session).
 // Each line is a JSON object; usage data lives in type: "token_usage_record"
-// payloads. No cost field — total_cost is always 0.
+// payloads. No cost field — total_cost is always 0. A record whose payload
+// repeats the line right before it verbatim is a re-emission, counted once.
 //
 // detail:true adds tool_breakdown/bytes_by_tool from response_item lines of
 // type custom_tool_call / custom_tool_call_output, matched by call_id — the
@@ -177,6 +178,7 @@ export function readCodexUsage(
     let fileModel: string | undefined;
     let fileProvider: string = "";
     let hasTokenUsage = false;
+    let prevRecord: string | undefined; // payload of the line just before, if it was a token_usage_record
 
     const lines = content.split("\n");
     for (const line of lines) {
@@ -188,6 +190,17 @@ export function readCodexUsage(
       } catch {
         continue; // malformed line — skip, don't abort
       }
+
+      // #157: Codex can re-emit a token_usage_record verbatim. Drop only a
+      // full-payload repeat of the line right before it — equal totals with
+      // other fields different, or with any line between, are real calls.
+      const recKey =
+        parsed.type === "token_usage_record"
+          ? JSON.stringify(parsed.payload)
+          : undefined;
+      const repeat = recKey !== undefined && recKey === prevRecord;
+      prevRecord = recKey;
+      if (repeat) continue;
 
       if (parsed.type === "session_meta" && parsed.payload) {
         fileCwd = parsed.payload.cwd;
