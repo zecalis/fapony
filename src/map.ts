@@ -577,7 +577,7 @@ export function extractExports(
 // cannot see: `}` sits AT the declaration indent, so the walk stops one line
 // short of it. Take that line when it is nothing but closers — which is why
 // the slice a caller pastes into an edit is syntactically whole.
-// Callers: review-seed --body, conventions seeder (wrapper detection).
+// Caller: review-seed --body.
 const MAX_BODY_LINES = 80;
 
 export function extractBody(source: string, line: number): string[] {
