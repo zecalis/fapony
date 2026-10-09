@@ -173,3 +173,51 @@ test("testReadClaudeCodeUsageSkipsMalformedLines", () => {
   });
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("testReadClaudeCodeUsageDedupesMessageIdAcrossBlockLines", () => {
+  // Claude Code writes one line per content block; each repeats the
+  // message's id + usage snapshot. Count it once (#157).
+  const dir = mkdtempSync(join(tmpdir(), "fapony-claude-code-dedupe-"));
+  const projectDir = join(dir, "projects", "-tmp-test-worktree");
+  mkdirSync(projectDir, { recursive: true });
+  const line = (id: string, block: object) =>
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        id,
+        model: "claude-sonnet-5",
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 50,
+          cache_read_input_tokens: 500,
+        },
+        content: [block],
+      },
+      timestamp: "2026-09-09T03:00:00.000Z",
+    });
+  writeFileSync(
+    join(projectDir, "s1.jsonl"),
+    [
+      line("msg_a", { type: "text", text: "hi" }),
+      line("msg_a", { type: "tool_use", id: "t1", name: "Read", input: {} }),
+      line("msg_a", { type: "tool_use", id: "t2", name: "Bash", input: {} }),
+      line("msg_b", { type: "text", text: "done" }),
+    ].join("\n"),
+  );
+  withEnv("FAPONY_CLAUDE_PROJECTS_DIR", join(dir, "projects"), () => {
+    const r = readClaudeCodeUsage(
+      "/tmp/test-worktree",
+      undefined,
+      undefined,
+      true,
+    );
+    assert.equal(r.total_tokens_input, 2000);
+    assert.equal(r.total_tokens_output, 100);
+    assert.equal(r.total_tokens_cache_read, 1000);
+    assert.equal(r.detail?.steps, 2);
+    assert.equal(r.detail?.tool_breakdown.Read, 1);
+    assert.equal(r.detail?.tool_breakdown.Bash, 1);
+    console.log("  ✓ readClaudeCodeUsage counts each message id once");
+  });
+  rmSync(dir, { recursive: true, force: true });
+});

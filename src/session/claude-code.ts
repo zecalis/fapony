@@ -31,6 +31,7 @@ function encodePath(p: string): string {
 
 interface UsageLine {
   message?: {
+    id?: string;
     model?: string;
     content?: Array<{
       type?: string;
@@ -173,6 +174,9 @@ export function readClaudeCodeUsage(
       }
 
       let fileSessions = 0;
+      // Claude Code writes one line per content block, each repeating the
+      // message's id and usage snapshot — count each message id once (#157).
+      const seenIds = new Set<string>();
       const lines = content.split("\n");
       for (const line of lines) {
         if (!line?.includes("input_tokens")) continue;
@@ -186,6 +190,11 @@ export function readClaudeCodeUsage(
 
         const usage = parsed.message?.usage;
         if (!usage) continue;
+        const msgId = parsed.message?.id;
+        if (msgId) {
+          if (seenIds.has(msgId)) continue;
+          seenIds.add(msgId);
+        }
 
         // Timestamp filtering.
         if (parsed.timestamp) {
@@ -260,6 +269,7 @@ export function readClaudeCodeUsage(
         const useTs = new Map<string, { name: string; ts: number | null }>();
         let fileSteps = 0;
         let fileModel: string | null = null;
+        const stepIds = new Set<string>();
         for (const line of lines) {
           if (!line) continue;
           let parsed: UsageLine;
@@ -316,7 +326,10 @@ export function readClaudeCodeUsage(
             }
           }
           const usage = parsed.message?.usage;
-          if (usage) {
+          const stepId = parsed.message?.id;
+          const repeat = !!stepId && stepIds.has(stepId);
+          if (stepId) stepIds.add(stepId);
+          if (usage && !repeat) {
             fileSteps++;
             turnTs.push(ts);
             timingInput.steps++;
