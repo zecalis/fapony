@@ -125,3 +125,49 @@ test("testReadCodexUsageSkipsMalformedLines", () => {
   });
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("testReadCodexUsageDropsConsecutiveIdenticalRecords", () => {
+  const dir = mkdtempSync(join(tmpdir(), "fapony-codex-repeat-"));
+  const sessionsDir = join(dir, "2026", "09", "09");
+  mkdirSync(sessionsDir, { recursive: true });
+
+  const record = (ts: string, turn: string, input: number) =>
+    JSON.stringify({
+      timestamp: ts,
+      type: "token_usage_record",
+      payload: {
+        session_id: "s",
+        turn_id: turn,
+        usage: { input_tokens: input, output_tokens: 1 },
+      },
+    });
+  const content = [
+    JSON.stringify({
+      timestamp: "2026-09-09T10:00:00.000Z",
+      type: "session_meta",
+      payload: { session_id: "s", cwd: "/tmp/wt", model: "gpt-5.6-terra" },
+    }),
+    // Same full payload re-emitted back to back (new timestamp) → count once.
+    record("2026-09-09T10:00:01.000Z", "t1", 1000),
+    record("2026-09-09T10:00:02.000Z", "t1", 1000),
+    // Same totals, different turn → two real calls, count both.
+    record("2026-09-09T10:00:03.000Z", "t2", 100),
+    record("2026-09-09T10:00:04.000Z", "t3", 100),
+    // Identical payload with another line between → count both.
+    record("2026-09-09T10:00:05.000Z", "t4", 10),
+    JSON.stringify({ type: "event_msg", payload: { type: "task_complete" } }),
+    record("2026-09-09T10:00:06.000Z", "t4", 10),
+  ].join("\n");
+  writeFileSync(join(sessionsDir, "rollout-repeat.jsonl"), content);
+
+  withEnv("FAPONY_CODEX_SESSIONS_DIR", dir, () => {
+    const result = readCodexUsage("/tmp/wt", undefined, undefined, true);
+    assert.equal(result.total_tokens_input, 1000 + 200 + 20);
+    assert.equal(result.total_tokens_output, 5);
+    assert.equal(result.detail!.steps, 5);
+    console.log(
+      "  ✓ readCodexUsage drops only consecutive identical token_usage_record payloads",
+    );
+  });
+  rmSync(dir, { recursive: true, force: true });
+});
