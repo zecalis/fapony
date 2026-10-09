@@ -21,7 +21,6 @@ export { cmdInstallCodex } from "./install/codex.js";
 export { detectClients } from "./install/detect.js";
 export {
   cmdInstallOpencode,
-  gitAutonomyPluginSource,
   type OpencodeInstallOpts,
   opencodePluginFiles,
 } from "./install/opencode.js";
@@ -45,10 +44,6 @@ export async function cmdInstall(
   const platform = platformArg === "agy" ? "antigravity" : platformArg;
   const dryRun = args.includes("--dry-run");
   const installAll = args.includes("--all");
-  // Opt-in only: the git-autonomy rewrite is an opinion (commit-as-you-go),
-  // not a utility — never installed unless this flag rides along, including
-  // via --all. Opencode-only; other platforms ignore it.
-  const gitAutonomy = args.includes("--git-autonomy");
   // Refresh-only seam for `fapony update`: plugin bodies, never opencode.json.
   const pluginsOnly = args.includes("--plugins-only");
 
@@ -70,12 +65,12 @@ export async function cmdInstall(
     return;
   }
   if (platform === "opencode") {
-    cmdInstallOpencode(dryRun, deps, { gitAutonomy, pluginsOnly });
+    cmdInstallOpencode(dryRun, deps, { pluginsOnly });
     return;
   }
   if (platform !== undefined) {
     console.error(
-      `usage: fapony install --platform antigravity|agy|opencode|claude|zcode|codex [--dry-run] [--git-autonomy] [--plugins-only]`,
+      `usage: fapony install --platform antigravity|agy|opencode|claude|zcode|codex [--dry-run] [--plugins-only]`,
     );
     console.error(
       `  supported platforms: antigravity (agy), opencode, claude, zcode, codex`,
@@ -118,10 +113,7 @@ export async function cmdInstall(
     console.error("\n  dry run — nothing is written");
     for (const client of found) {
       console.error(`\n  ${client.platform}`);
-      installPlatform(client.platform, dryRun, deps, {
-        gitAutonomy,
-        pluginsOnly,
-      });
+      installPlatform(client.platform, dryRun, deps, { pluginsOnly });
     }
     console.error(
       `\n  dry run complete — re-run without --dry-run to apply (or add --all to skip the prompt)`,
@@ -134,10 +126,7 @@ export async function cmdInstall(
     console.error();
     for (const client of found) {
       console.error(`${client.platform}`);
-      installPlatform(client.platform, dryRun, deps, {
-        gitAutonomy,
-        pluginsOnly,
-      });
+      installPlatform(client.platform, dryRun, deps, { pluginsOnly });
     }
     return;
   }
@@ -167,10 +156,7 @@ export async function cmdInstall(
       const answer = await askFn(`install into ${client.platform}?`, "Y");
       if (isAffirmative(answer)) {
         console.error(`${client.platform}`);
-        installPlatform(client.platform, dryRun, deps, {
-          gitAutonomy,
-          pluginsOnly,
-        });
+        installPlatform(client.platform, dryRun, deps, { pluginsOnly });
       }
     }
   } finally {
@@ -182,7 +168,7 @@ function installPlatform(
   platform: string,
   dryRun: boolean,
   deps: InstallDeps,
-  opts: { gitAutonomy?: boolean; pluginsOnly?: boolean } = {},
+  opts: { pluginsOnly?: boolean } = {},
 ): void {
   switch (platform) {
     case "antigravity":

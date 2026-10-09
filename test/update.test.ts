@@ -37,25 +37,14 @@ test("testUpdateRootIsRepoRoot", () => {
 // The spawned refresh must carry --plugins-only: without it the child does a
 // full install and rewrites the user's opencode.json (the finding this pins).
 test("testUpdateRefreshArgvPluginsOnly", () => {
-  const argv = refreshArgv(["fapony-read-hint.ts"]);
+  const argv = refreshArgv();
   assert.equal(argv[0], join(ROOT, "fapony.ts"), "spawns the pulled checkout");
   assert.deepEqual(
     argv.slice(1, 5),
     ["install", "--platform", "opencode", "--plugins-only"],
     "refresh is plugins-only — never a full install",
   );
-  assert.ok(
-    !argv.includes("--git-autonomy"),
-    "git-autonomy rides along only when the user opted in",
-  );
-  const withGa = refreshArgv(["fapony-read-hint.ts", "fapony-git-autonomy.ts"]);
-  assert.ok(
-    withGa.includes("--git-autonomy"),
-    "opt-in plugin present → refresh it too, never create it",
-  );
-  console.log(
-    "  ✓ update refresh argv is plugins-only, git-autonomy conditional",
-  );
+  console.log("  ✓ update refresh argv is plugins-only");
 });
 
 // The banner "Updated <version>@<sha>" must carry the real version — proof
