@@ -190,6 +190,24 @@ export const chunkLabel = (item: string): string | null =>
   )?.[1] ??
   null;
 
+/** The TL;DR lines that are chunk `label`: its own line, or — with none —
+ *  the flat siblings it was split into (2 → 2a, 2b). With a `2` line, `2b`
+ *  is a leftover, not a part. */
+export const chunkLines = (items: string[], label: string): string[] => {
+  const want = label.toLowerCase();
+  const lbl = (l: string) => chunkLabel(l)?.toLowerCase();
+  return items.some((l) => lbl(l) === want)
+    ? items.filter((l) => lbl(l) === want)
+    : items.filter((l) => lbl(l)?.replace(/[a-z]$/, "") === want);
+};
+
+/** Chunk `label` is closed once every line of it is ticked or dropped — the
+ *  one answer for `(after …)`, cross-plan `(after x:N)` and plan check. */
+export const chunkClosed = (items: string[], label: string): boolean => {
+  const mine = chunkLines(items, label);
+  return mine.length > 0 && mine.every((l) => TICK_RE.test(l));
+};
+
 // `(after 2, vela-jobs:j4)` → ["2", "vela-jobs:j4"]; null = no marker, `—` /
 // `none` = waits on nothing. A bare label names a chunk of this plan only.
 export const afterRefs = (line: string): string[] | null => {
@@ -266,10 +284,9 @@ const afterWarns = (
   all: string[],
   name: (l: string) => string,
 ): string[] => {
-  const labels = new Set(all.map((l) => chunkLabel(l)?.toLowerCase()));
   const dirs = [dirname(file), doneDir, parkedDir].filter(Boolean);
   const unmet = (ref: string): boolean => {
-    if (!ref.includes(":")) return !labels.has(ref);
+    if (!ref.includes(":")) return chunkLines(all, ref).length === 0;
     const base = `PLAN-${ref.split(":")[0].replace(/^plan-/, "")}.md`;
     return !dirs.some((d) => existsSync(join(d, base)));
   };
@@ -378,8 +395,12 @@ export const collectDepIssues = (active: string[]): string[] => {
           `${relPath} — blocked_by points at ${ref} but no such file is in plan/, done/ or parked/\n   fix: correct the filename or keep blocked_by as a plain sentence`,
         );
       } else if (loc === "done") {
+        // only a status:blocked plan is "still blocked" — any other plan just
+        // carries a stale blocked_by
         issues.push(
-          `${relPath} — blocker ${ref} already shipped to done/ but this plan is still status:blocked\n   fix: clear status:blocked or tick the remaining chunk`,
+          fm.status === "blocked"
+            ? `${relPath} — blocker ${ref} already shipped to done/ but this plan is still status:blocked\n   fix: clear status:blocked or tick the remaining chunk`
+            : `${relPath} — blocker ${ref} already shipped to done/ but blocked_by still names it\n   fix: drop ${ref} from blocked_by`,
         );
       } else if (loc === "parked") {
         issues.push(
@@ -510,6 +531,62 @@ export const collectBlockedTickedIssues = (active: string[]): string[] => {
     }
   }
   return issues;
+};
+
+// `blocked_by: PLAN-vela.md chunk 2 (org)` whose chunk 2 is closed in plan/ —
+// the blocker reads done but may not have delivered all this plan needs, so
+// say "check", never clear it. Only the label right after the ref is read
+// (`chunk 2` / `i2`); none = the whole plan. A sentence, another repo's plan or
+// a label the blocker has no line for stays silent — no evidence, no claim.
+// done/ and parked/ blockers are collectDepIssues' cases.
+export const collectClosedBlockerWarns = (active: string[]): string[] => {
+  const warns: string[] = [];
+  for (const f of active) {
+    const raw = parsePlanFrontmatter(f).blockedByRaw;
+    for (const m of raw?.matchAll(PLAN_REF_RE) ?? []) {
+      const ref = basename(m[0]);
+      if (planLocation(ref) !== "plan") continue;
+      const after = raw?.slice((m.index ?? 0) + m[0].length) ?? "";
+      const label = new RegExp(`^\\s*(?:chunk[\\s-]*)?(${LABEL})\\b`, "i")
+        .exec(after)?.[1]
+        ?.toLowerCase();
+      const { checked, unchecked, ordered } = firstSectionItems(
+        join(planDir, ref),
+      );
+      const closed = label
+        ? chunkClosed(ordered, label)
+        : checked.length > 0 && unchecked.length === 0;
+      if (closed)
+        warns.push(
+          `${relative(planBase, f)} — blocked_by names ${ref}${label ? ` chunk ${label}` : ""}, which is closed — check whether it delivered what this plan waits on\n   fix: drop it from blocked_by once confirmed (not done for you)`,
+        );
+    }
+  }
+  return warns;
+};
+
+// `(agent fills in …)` is what plan-seed leaves for the agent — one left in a
+// plan or the spec it cites is a section nobody wrote. Inline code and fences
+// are blanked first, so a doc that quotes the marker is not one.
+export const collectPlaceholderWarns = (active: string[]): string[] => {
+  const files = new Set(active);
+  for (const f of active) {
+    const spec = parsePlanFrontmatter(f).spec;
+    if (spec && existsSync(join(planBase, "spec", spec)))
+      files.add(join(planBase, "spec", spec));
+  }
+  return [...files].flatMap((f) => {
+    const at = readFileSync(f, "utf8")
+      .replace(/(```|~~~)[\s\S]*?\1/g, (b) => b.replace(/[^\n]/g, " "))
+      .replace(/`[^`\n]*`/g, (b) => " ".repeat(b.length))
+      .split("\n")
+      .flatMap((l, i) => (l.includes("(agent fills in") ? [i + 1] : []));
+    return at.length
+      ? [
+          `${relative(planBase, f)}:${at.slice(0, 5).join(", ")}${at.length > 5 ? ", …" : ""} — ${at.length} seed placeholder(s) "(agent fills in …)" left\n   fix: write the section or delete it`,
+        ]
+      : [];
+  });
 };
 
 // A first-section checkbox that is neither [ ], [x] nor [~] counts for nothing:
@@ -1003,6 +1080,15 @@ export const cmdPlanSweep = (a: string[]) => {
   const { stale: staleHandoffs } = splitHandoffs(src);
 
   const dst = relocatePlan(src, doneDir);
+  // done/ is the status now — a kept `status: active` read as still running
+  // (fapony 20, fael 4 in done/)
+  const moved = readFileSync(dst, "utf8");
+  const front = FRONT.exec(moved)?.[0];
+  if (front && /^status:\s*active\b/m.test(front))
+    writeAtomic(
+      dst,
+      moved.replace(front, front.replace(/^status:\s*active\b.*\r?\n/m, "")),
+    );
 
   // stamped after the move: a failed move must not leave plan/ stamped
   if (evidence) {
@@ -1434,6 +1520,8 @@ export const cmdPlanCheck = (a: string[]) => {
   //    Unadopted docs join them: a stray handoff in plan/ is a nudge, not a failure.
   const driftWarns = collectDriftWarns(active);
   driftWarns.push(...collectUnadoptedDocWarns(active));
+  driftWarns.push(...collectClosedBlockerWarns(active));
+  driftWarns.push(...collectPlaceholderWarns(active));
   for (const f of active)
     for (const w of tldrWarns(f))
       driftWarns.push(`${relative(planBase, f)} — ${w}`);

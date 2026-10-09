@@ -705,3 +705,58 @@ test("testTldrWarnsOnSizeAndStruckOpenChunks", () => {
     assert.match(out, /⚠ open chunk 3 carries struck-through text/, out);
   });
 });
+
+test("testPlanBlockedOffersNoNext", () => {
+  withTempRepo((dir) => {
+    const p = join(dir, ".fapony", "plan");
+    mkdirSync(p, { recursive: true });
+    writeFileSync(
+      join(p, "PLAN-forms.md"),
+      plan(
+        "Forms",
+        "status: blocked\nblocked_by: real forms from byyeah + PLAN-vela.md chunk 7\n",
+        "- [ ] chunk 1 — form_template",
+      ),
+    );
+    writeFileSync(join(p, "PLAN-a.md"), plan("A", "", "- [ ] chunk 1 — do a"));
+    writeFileSync(
+      join(p, "PLAN-zz.md"),
+      plan("Z", "status: blocked\nblocked_by: x\n", "- [ ] chunk 1 — z"),
+    );
+    const all = run(dir, []);
+    assert.match(all, /PLAN-forms\.md[^\n]*\n- PLAN-zz\.md/, "sorted by name");
+    assert.match(all, /1 active plan\(s\)/);
+    assert.ok(!all.includes("form_template"), all);
+    assert.match(
+      all,
+      /## blocked \(2\) — no chunk offered\n- PLAN-forms\.md — 0\/1 chunks · blocked_by: real forms from byyeah/,
+    );
+    const one = run(dir, ["PLAN-forms.md"]);
+    assert.match(one, /⚠ blocked \(0\/1 chunks\) — blocked_by: real forms/);
+    assert.ok(!/## next|## closing/.test(one), one);
+    // what unblocking needs stays: the open chunks are listed, not offered
+    assert.match(one, /## later \(1\)\n- chunk 1 — form_template/);
+  });
+});
+
+test("testPlanAllWaitSuggestsParkOrTracker", () => {
+  withTempRepo((dir) => {
+    const p = join(dir, ".fapony", "plan");
+    mkdirSync(p, { recursive: true });
+    const ticks =
+      "- [x] chunk 1 — a\n- [ ] chunk 2 (wait ≥30 pairs) — b\n- [ ] chunk 3 (wait owner) — c";
+    writeFileSync(join(p, "PLAN-w.md"), plan("W", "", ticks));
+    writeFileSync(
+      join(p, "PLAN-t.md"),
+      `---\nkind: tracker\n---\n\n# T\n\n## TL;DR\n${ticks}\n`,
+    );
+    writeFileSync(
+      join(p, "PLAN-m.md"),
+      plan("M", "", `${ticks}\n- [ ] chunk 4 — ready`),
+    );
+    const hint = /every open chunk waits — park the plan/;
+    assert.match(run(dir, ["PLAN-w.md"]), hint);
+    assert.ok(!hint.test(run(dir, ["PLAN-t.md"])), "tracker never asked");
+    assert.ok(!hint.test(run(dir, ["PLAN-m.md"])), "one chunk is ready");
+  });
+});

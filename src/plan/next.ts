@@ -275,6 +275,14 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
     if (why) console.log(`parked_because: ${blockedByShort(why)}`);
     return;
   }
+  // blocked = a dependency stands in the way: no next, no rules — but spec,
+  // open chunks and handoff stay, they are what unblocking needs
+  const fm = parsePlanFrontmatter(file);
+  const blocked = fm.status === "blocked";
+  if (blocked)
+    console.log(
+      `⚠ blocked (${tally(items)}) — blocked_by: ${blockedByShort(fm.blockedByRaw)}; no chunk is offered. Unblock: drop \`status: blocked\` from the frontmatter`,
+    );
   const spec = specFile(file);
   if (spec) console.log(specLine(spec));
   // `plan:x:chunk-<label>` picks that chunk as "next"; else the picker: the
@@ -283,22 +291,25 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
   const pick = pickChunks(ordered, currentBranch());
   const openLines = ordered.filter(isOpen);
   const toAt = (i: number) => (i < 0 ? -1 : openLines.indexOf(ordered[i]));
-  const at = chunk
-    ? Math.max(
-        unchecked.findIndex(
-          (c) => chunkLabel(c)?.toLowerCase() === chunk.toLowerCase(),
-        ),
-        0,
-      )
-    : toAt(pick.next);
+  const at = blocked
+    ? -1
+    : chunk
+      ? Math.max(
+          unchecked.findIndex(
+            (c) => chunkLabel(c)?.toLowerCase() === chunk.toLowerCase(),
+          ),
+          0,
+        )
+      : toAt(pick.next);
   if (spec?.file && unchecked[at])
     for (const ref of specRefs(spec.file, unchecked[at])) console.log(ref);
   if (unchecked.length) {
     const name = planKeyName(file) ?? "<name>";
     const elsewhere = chunk ? [] : pick.wip.map((w) => toAt(w.at));
-    const alongside = chunk ? [] : pick.alongside;
+    const alongside = chunk || blocked ? [] : pick.alongside;
     if (at >= 0) console.log(`\n## next\n- [ ] ${unchecked[at]}`);
-    else console.log(`\n## next\n(none ready — ${noneReady(pick, ordered)})`);
+    else if (!blocked)
+      console.log(`\n## next\n(none ready — ${noneReady(pick, ordered)})`);
     if (elsewhere.length) {
       console.log(`\n## in progress in another worktree`);
       for (const [i, w] of pick.wip.entries())
@@ -319,6 +330,16 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
       for (const w of waiting)
         console.log(`- ${headline(unchecked[toAt(w.at)])} — wait: ${w.why}`);
     }
+    // every open chunk waits on a person or data — nothing for a session here
+    if (
+      waiting.length &&
+      waiting.length === openLines.length &&
+      fm.kind !== "tracker" &&
+      !blocked
+    )
+      console.log(
+        `⚠ every open chunk waits — park the plan (fapony plan park ${basename(file)} --apply) or make it \`kind: tracker\` (your call)`,
+      );
     const shown = new Set([
       at,
       ...elsewhere,
@@ -418,8 +439,11 @@ function showAll(): void {
     return;
   }
   const shipped = new Set(shippedNotMoved());
+  const blocked = files
+    .filter((f) => parsePlanFrontmatter(f).status === "blocked")
+    .sort();
   const active = files
-    .filter((f) => !shipped.has(basename(f)))
+    .filter((f) => !shipped.has(basename(f)) && !blocked.includes(f))
     .sort(
       (a, b) =>
         Number(isHighPriority(b)) - Number(isHighPriority(a)) ||
@@ -430,15 +454,8 @@ function showAll(): void {
   for (const f of active) {
     const items = readPlanSectionItems(f);
     const { unchecked } = items;
-    const fm = parsePlanFrontmatter(f);
-    const tags = [
-      isHighPriority(f) ? "priority:high" : "",
-      fm.status === "blocked"
-        ? `blocked_by: ${blockedByShort(fm.blockedByRaw)}`
-        : "",
-    ].filter(Boolean);
     console.log(
-      `\n- ${basename(f)} — ${tally(items)}${items.unknown.length ? ` · ⚠ ${items.unknown.length} unknown checkbox(es)` : ""}${tags.length ? ` · ${tags.join(" · ")}` : ""}`,
+      `\n- ${basename(f)} — ${tally(items)}${items.unknown.length ? ` · ⚠ ${items.unknown.length} unknown checkbox(es)` : ""}${isHighPriority(f) ? " · priority:high" : ""}`,
     );
     const { ordered } = firstSectionItems(f);
     const pick = pickChunks(ordered, branch);
@@ -467,6 +484,14 @@ function showAll(): void {
     console.log(
       `\n⚠ ${orphans.length} open handoff key(s) name no plan in ${planDirsText()}: ${orphans.slice(0, 5).join(", ")} — re-file under plan:<name>:handoff (--supersedes <id>)`,
     );
+  // blocked = a dependency stands in the way — listed, never offered a next
+  if (blocked.length) {
+    console.log(`\n## blocked (${blocked.length}) — no chunk offered`);
+    for (const f of blocked)
+      console.log(
+        `- ${basename(f)} — ${tally(readPlanSectionItems(f))} · blocked_by: ${blockedByShort(parsePlanFrontmatter(f).blockedByRaw)}`,
+      );
+  }
   if (shipped.size) {
     console.log(`\n## shipped but not archived into done/ (${shipped.size})`);
     for (const n of shipped) console.log(`- ${n}`);

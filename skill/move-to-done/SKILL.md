@@ -53,7 +53,8 @@ You are about to move a PLAN that has been shipped to the archive.
  1c. **Check the dep graph before moving** — `fapony plan check` reads `blocked_by`/`blocks`
     and says what a human would miss: a `blocked_by` pointing at a file that is not in `plan/`
     or `done/`, a blocker already in `done/` while the dependent is still `status: blocked`,
-    a waiter cycle, and a blocked plan with all chunks ticked. Fix its issues first — a move
+    a waiter cycle, and a blocked plan with all chunks ticked. It also warns when a `blocked_by`
+    chunk in this repo is already closed — check it delivered, then edit `blocked_by` yourself. Fix its issues first — a move
     on top of a broken graph just relocates the confusion.
 
 2. **Run `fapony plan sweep --apply`** — this does the `git mv`, rewrites markdown links inside the
