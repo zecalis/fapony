@@ -512,6 +512,67 @@ export const collectBlockedTickedIssues = (active: string[]): string[] => {
   return issues;
 };
 
+// `blocked_by: PLAN-vela.md chunk 2 (org)` whose chunk 2 is closed in plan/ —
+// the blocker reads done but may not have delivered all this plan needs, so
+// say "check", never clear it. Only the label right after the ref is read
+// (`chunk 2` / `i2`); none = the whole plan. A sentence, another repo's plan or
+// a label the blocker has no line for stays silent — no evidence, no claim.
+// done/ and parked/ blockers are collectDepIssues' cases.
+export const collectClosedBlockerWarns = (active: string[]): string[] => {
+  const warns: string[] = [];
+  for (const f of active) {
+    const raw = parsePlanFrontmatter(f).blockedByRaw;
+    for (const m of raw?.matchAll(PLAN_REF_RE) ?? []) {
+      const ref = basename(m[0]);
+      if (planLocation(ref) !== "plan") continue;
+      const after = raw?.slice((m.index ?? 0) + m[0].length) ?? "";
+      const label = new RegExp(`^\\s*(?:chunk[\\s-]*)?(${LABEL})\\b`, "i")
+        .exec(after)?.[1]
+        ?.toLowerCase();
+      const { checked, unchecked } = firstSectionItems(join(planDir, ref));
+      // no `2` line = split into flat siblings (2 → 2a, 2b): closed once all
+      // are; with a `2` line, `2b` is a leftover, not a part
+      const lbl = (l: string) => chunkLabel(l)?.toLowerCase();
+      const all = [...checked, ...unchecked];
+      const own = all.some((l) => lbl(l) === label)
+        ? (l: string) => lbl(l) === label
+        : (l: string) => lbl(l)?.replace(/[a-z]$/, "") === label;
+      const closed = label
+        ? checked.some(own) && !unchecked.some(own)
+        : checked.length > 0 && unchecked.length === 0;
+      if (closed)
+        warns.push(
+          `${relative(planBase, f)} — blocked_by names ${ref}${label ? ` chunk ${label}` : ""}, which is closed — check whether it delivered what this plan waits on\n   fix: drop it from blocked_by once confirmed (not done for you)`,
+        );
+    }
+  }
+  return warns;
+};
+
+// `(agent fills in …)` is what plan-seed leaves for the agent — one left in a
+// plan or the spec it cites is a section nobody wrote. Inline code and fences
+// are blanked first, so a doc that quotes the marker is not one.
+export const collectPlaceholderWarns = (active: string[]): string[] => {
+  const files = new Set(active);
+  for (const f of active) {
+    const spec = parsePlanFrontmatter(f).spec;
+    if (spec && existsSync(join(planBase, "spec", spec)))
+      files.add(join(planBase, "spec", spec));
+  }
+  return [...files].flatMap((f) => {
+    const at = readFileSync(f, "utf8")
+      .replace(/```[\s\S]*?```/g, (b) => b.replace(/[^\n]/g, " "))
+      .replace(/`[^`\n]*`/g, (b) => " ".repeat(b.length))
+      .split("\n")
+      .flatMap((l, i) => (l.includes("(agent fills in") ? [i + 1] : []));
+    return at.length
+      ? [
+          `${relative(planBase, f)}:${at.slice(0, 5).join(", ")}${at.length > 5 ? ", …" : ""} — ${at.length} seed placeholder(s) "(agent fills in …)" left\n   fix: write the section or delete it`,
+        ]
+      : [];
+  });
+};
+
 // A first-section checkbox that is neither [ ], [x] nor [~] counts for nothing:
 // the plan's tally and "all chunks closed" silently leave it out.
 export const collectMarkerIssues = (active: string[]): string[] =>
@@ -1003,6 +1064,15 @@ export const cmdPlanSweep = (a: string[]) => {
   const { stale: staleHandoffs } = splitHandoffs(src);
 
   const dst = relocatePlan(src, doneDir);
+  // done/ is the status now — a kept `status: active` read as still running
+  // (fapony 20, fael 4 in done/)
+  const moved = readFileSync(dst, "utf8");
+  const front = FRONT.exec(moved)?.[0];
+  if (front && /^status:\s*active\b/m.test(front))
+    writeAtomic(
+      dst,
+      moved.replace(front, front.replace(/^status:\s*active\b.*\r?\n/m, "")),
+    );
 
   // stamped after the move: a failed move must not leave plan/ stamped
   if (evidence) {
@@ -1434,6 +1504,8 @@ export const cmdPlanCheck = (a: string[]) => {
   //    Unadopted docs join them: a stray handoff in plan/ is a nudge, not a failure.
   const driftWarns = collectDriftWarns(active);
   driftWarns.push(...collectUnadoptedDocWarns(active));
+  driftWarns.push(...collectClosedBlockerWarns(active));
+  driftWarns.push(...collectPlaceholderWarns(active));
   for (const f of active)
     for (const w of tldrWarns(f))
       driftWarns.push(`${relative(planBase, f)} — ${w}`);

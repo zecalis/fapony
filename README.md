@@ -232,8 +232,9 @@ the older way (`--files <PLAN path>`) still show up — fapony matches them by f
 **There is no `MASTER.md`** — every line above is derived from the plan files themselves, so it
 cannot drift; a hand-kept master file always does. `fapony plan check` verifies ticked chunk
 shas against git history (a ticked box with no sha to check is a claim, not a close; a chunk with
-no commit — a measurement — cites `(fael:<decision id>)`, and `[~]` marks a dropped one) and flags
-dangling `blocked_by` refs; it and `fapony plan <PLAN>` warn when a TL;DR passes 15 lines or
+no commit — a measurement — cites `(fael:<decision id>)`, and `[~]` marks a dropped one), flags
+dangling `blocked_by` refs, and warns — never edits — when a `blocked_by` chunk is already closed
+or a plan or its spec still holds a seed `(agent fills in …)`; it and `fapony plan <PLAN>` warn when a TL;DR passes 15 lines or
 4,000 chars, or an open chunk still carries `~~struck~~` history; `fapony plan sweep PLAN-x.md --apply` archives a shipped plan with `git mv`
 into `.fapony/done/` — same name, same depth, so every relative link inside the file survives the
 move. A spec lives in `.fapony/spec/` while a plan cites it (`spec:` frontmatter) and moves to
@@ -241,7 +242,9 @@ move. A spec lives in `.fapony/spec/` while a plan cites it (`spec:` frontmatter
 names the file, and repoints every link. A plan set aside because the situation changed — not
 shipped — goes to `.fapony/parked/` with `fapony plan park PLAN-x.md… --apply` (`unpark` brings it
 back): links rewritten both ways, `status: blocked` dropped and `blocked_by:` kept as `parked_because:` (unpark drops it), its spec stays in `spec/`, `fapony plan` lists it on one line and
-offers none of its chunks. `fapony plan PLAN-x.md` prints `§N → SPEC-x.md:from-to`
+offers none of its chunks; a `status: blocked` plan is listed under `## blocked` with its `blocked_by`
+and offered no chunk either, and a plan whose every open chunk is `(wait …)` is told to park or
+become `kind: tracker`. `plan sweep --apply` drops a leftover `status: active` on the way into `done/`. `fapony plan PLAN-x.md` prints `§N → SPEC-x.md:from-to`
 for each section the next chunk cites, so a session reads those lines, not the whole spec.
 
 ## CLI

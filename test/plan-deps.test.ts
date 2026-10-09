@@ -6,13 +6,15 @@ import { test } from "bun:test";
 // prints an unblock hint on --apply.
 
 import assert from "node:assert";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { initPlanStore } from "../src/plan/store.js";
 import {
   cmdPlanSweep,
   collectBlockedTickedIssues,
+  collectClosedBlockerWarns,
   collectDepIssues,
+  collectPlaceholderWarns,
   countFirstSection,
   extractPlanRefs,
   parsePlanFrontmatter,
@@ -239,6 +241,79 @@ test("testPlanSweepBlockedViewAndUnblockHint", () => {
       /🔓 PLAN-ship-gate\.md shipped — PLAN-doc-chain\.md list\(s\) it as blocker/,
       `unblock hint printed:\n${out2}`,
     );
+    // done/ is the status now — `status: active` is dropped, `blocks:` kept
+    const done = readFileSync(
+      join(dir, ".fapony", "done", "PLAN-ship-gate.md"),
+      "utf8",
+    );
+    assert.ok(!/status:\s*active/.test(done), done);
+    assert.match(done, /^---\nblocks: PLAN-doc-chain\.md\n---/);
   });
   console.log("  ✓ plan-sweep: blocked view + 🔓 unblock hint on ship");
+});
+
+test("testClosedBlockerWarnsOnlyOnEvidence", () => {
+  withTempRepo((dir) => {
+    setup(dir, {
+      "PLAN-base.md": activeBody(
+        "---\nkind: unit\n---",
+        "- [x] chunk 1 — a\n- [x] chunk 2a — b\n- [x] chunk 2b — c\n- [x] m2 — d\n- [ ] m2b — left from m2\n- [x] chunk 3a — e\n- [ ] chunk 3b — f\n- [ ] chunk 4 — g\n",
+      ),
+      "PLAN-done-all.md": activeBody(
+        "---\nkind: unit\n---",
+        "- [x] chunk 1 — a\n",
+      ),
+      // ticked label · split siblings all closed · exact line beats a leftover
+      "PLAN-w1.md": activeBody(
+        "---\nblocked_by: PLAN-base.md chunk 1 (schema) + PLAN-base.md chunk 2, PLAN-base.md m2\n---",
+      ),
+      // whole-plan ref, every chunk closed
+      "PLAN-w2.md": activeBody("---\nblocked_by: PLAN-done-all.md\n---"),
+      // open chunk · split with an open part · sentence · other repo · missing label
+      "PLAN-q.md": activeBody(
+        "---\nstatus: blocked\nblocked_by: PLAN-base.md chunk 4 · PLAN-base.md chunk 3 · waiting on byyeah forms · fael PLAN-x.md chunk 1 · PLAN-base.md chunk 9\n---",
+      ),
+    });
+    inRepo(dir, () => {
+      const p = (n: string) => join(dir, ".fapony", "plan", n);
+      const w = collectClosedBlockerWarns(
+        ["PLAN-w1.md", "PLAN-w2.md", "PLAN-q.md"].map(p),
+      ).map((l) => l.split(", which")[0]);
+      assert.deepEqual(w, [
+        "plan/PLAN-w1.md — blocked_by names PLAN-base.md chunk 1",
+        "plan/PLAN-w1.md — blocked_by names PLAN-base.md chunk 2",
+        "plan/PLAN-w1.md — blocked_by names PLAN-base.md chunk m2",
+        "plan/PLAN-w2.md — blocked_by names PLAN-done-all.md",
+      ]);
+      // warn only — the frontmatter is never touched
+      assert.match(readFileSync(p("PLAN-q.md"), "utf8"), /status: blocked/);
+    });
+  });
+});
+
+test("testPlaceholderWarnsInPlanAndCitedSpec", () => {
+  withTempRepo((dir) => {
+    setup(dir, {
+      "PLAN-a.md": activeBody(
+        "---\nspec: SPEC-a.md\n---",
+        "- [ ] chunk 1 — (agent fills in)\n",
+      ),
+      "PLAN-b.md": activeBody(
+        "---\nspec: SPEC-a.md\n---",
+        "- [ ] chunk 1 — quotes `(agent fills in` only\n",
+      ),
+    });
+    mkdirSync(join(dir, ".fapony", "spec"), { recursive: true });
+    writeFileSync(
+      join(dir, ".fapony", "spec", "SPEC-a.md"),
+      "# SPEC-a — (agent fills in a title)\n\n```\n(agent fills in)\n```\n## (agent fills in — shapes)\n",
+    );
+    inRepo(dir, () => {
+      const w = collectPlaceholderWarns(
+        ["PLAN-a.md", "PLAN-b.md"].map((n) => join(dir, ".fapony", "plan", n)),
+      ).map((l) => l.split(" — ")[0]);
+      // spec cited twice is read once; the fenced line is not counted
+      assert.deepEqual(w, ["plan/PLAN-a.md:8", "spec/SPEC-a.md:1, 6"]);
+    });
+  });
 });
