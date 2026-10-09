@@ -21,7 +21,6 @@ fapony/
     review-pony/                # review as verification + scope facts before (review-seed), verdict after
     debug-pony/                 # debug as a ledger: fael before, repro → narrow → disprove, close with what was ruled out
     move-to-done/               # archive PLAN เข้า .fapony/done/ หลัง ship
-    git-ship/                   # push branch, open PR, merge, reset branch onto base
   templates/
     PLAN.md / SPEC.md              # plan+spec templates for `fapony init`
   src/

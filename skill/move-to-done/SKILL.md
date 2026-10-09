@@ -117,4 +117,5 @@ A ship worth a note looks like this instead:
 
 - No git repo / no default branch → tell user: "Add header > ✅ **shipped** (<hash>) first"
 - plan sweep refuses (open fael issue) → fix and `fael close` it, or `MEM_FORCE=1`
+- plan sweep refuses (fael unreadable) → fael is missing or broken: say so and stop — `MEM_FORCE=1` only when the user says so
 - Too many inbound links → plan sweep reports them; too many to fix → report the list

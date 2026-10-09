@@ -192,7 +192,6 @@ expects, so a client can symlink the directory rather than copy the file:
 | `skill/review-pony/` | Review as verification: scope facts before (`review-seed`), a fael row after when findings survive | `/review-pony` |
 | `skill/debug-pony/` | Debug as a ledger: read past fael rows first, repro → narrow → disprove, close with cause, what was ruled out, and the guard | `/debug-pony` |
 | `skill/move-to-done/` | Archive a shipped PLAN into .fapony/done/ | `/move-to-done` |
-| `skill/git-ship/` | Push branch, open PR with drafted title/body, merge, reset branch onto base | `/ship`, `/pr` |
 
 `plan-with-pony` is vendor-neutral — the SKILL.md *is* the prompt, so pipe it to any agent:
 `cat skill/plan-with-pony/SKILL.md | claude -p` (or `opencode run`, or anything that reads stdin).
