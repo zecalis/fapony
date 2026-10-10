@@ -21,8 +21,10 @@ import { join } from "node:path";
 import { withFakeFael, withTempRepo } from "./helpers.js";
 
 const FAPONY = join(import.meta.dir, "..", "fapony.ts");
+// a hung child blocks the worker, so bun --timeout never fires: kill it here
+const timeout = 15_000;
 const git = (dir: string, cmd: string): string =>
-  execSync(`git ${cmd}`, { cwd: dir }).toString().trim();
+  execSync(`git ${cmd}`, { cwd: dir, timeout }).toString().trim();
 
 const sweep = (dir: string, ...args: string[]) => {
   const p = Bun.spawnSync(
@@ -30,6 +32,7 @@ const sweep = (dir: string, ...args: string[]) => {
     {
       cwd: dir,
       env: process.env,
+      timeout,
       stdout: "pipe",
       stderr: "pipe",
     },
@@ -194,6 +197,7 @@ test("testFinalChunkHandoffIsStaleOnceAllTicked", () => {
       const list = Bun.spawnSync(["bun", FAPONY, "plan", "sweep"], {
         cwd: join(dir, "sub"),
         env: process.env,
+        timeout,
         stdout: "pipe",
       }).stdout.toString();
       assert.match(list, /PLAN-a\.md/);
@@ -280,6 +284,7 @@ const run = (cwd: string, ...args: string[]) => {
   const p = Bun.spawnSync(["bun", FAPONY, "plan", ...args], {
     cwd,
     env: process.env,
+    timeout,
     stdout: "pipe",
     stderr: "pipe",
   });
