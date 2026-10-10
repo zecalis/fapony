@@ -221,3 +221,41 @@ test("testReadClaudeCodeUsageDedupesMessageIdAcrossBlockLines", () => {
   });
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("testReadClaudeCodeUsageDedupesMessageIdAcrossFiles", () => {
+  // Resume copies earlier messages into a new session file, sometimes under
+  // another project dir; a zero-usage placeholder copy must not hide the
+  // full one (#157 follow-up).
+  const dir = mkdtempSync(join(tmpdir(), "fapony-claude-code-xfile-"));
+  const projects = join(dir, "projects");
+  const usage = { input_tokens: 1000, output_tokens: 50 };
+  const zero = { input_tokens: 0, output_tokens: 0 };
+  const line = (id: string, u: object) =>
+    JSON.stringify({
+      type: "assistant",
+      message: { id, model: "claude-sonnet-5", usage: u },
+      timestamp: "2026-09-09T03:00:00.000Z",
+    });
+  mkdirSync(join(projects, "-tmp-a"), { recursive: true });
+  mkdirSync(join(projects, "-tmp-b"), { recursive: true });
+  writeFileSync(
+    join(projects, "-tmp-a", "s1.jsonl"),
+    [line("msg_a", zero), line("msg_b", usage), line("msg_c", usage)].join(
+      "\n",
+    ),
+  );
+  writeFileSync(
+    join(projects, "-tmp-b", "s2.jsonl"),
+    [line("msg_a", usage), line("msg_b", usage)].join("\n"),
+  );
+  withEnv("FAPONY_CLAUDE_PROJECTS_DIR", projects, () => {
+    const r = readClaudeCodeUsage();
+    assert.equal(r.total_tokens_input, 3000);
+    assert.equal(r.total_tokens_output, 150);
+    assert.equal(r.session_count, 2);
+    console.log(
+      "  ✓ readClaudeCodeUsage counts a message id once across files",
+    );
+  });
+  rmSync(dir, { recursive: true, force: true });
+});

@@ -144,6 +144,11 @@ export function readClaudeCodeUsage(
     return true;
   }
 
+  // Count each message id once per call (#157): Claude Code repeats the id and
+  // usage snapshot on every content-block line, and copies earlier messages
+  // into a new session file on resume — sometimes under another project dir.
+  const seenIds = new Set<string>();
+
   for (const projectDir of projectDirs) {
     let files: string[];
     try {
@@ -174,9 +179,6 @@ export function readClaudeCodeUsage(
       }
 
       let fileSessions = 0;
-      // Claude Code writes one line per content block, each repeating the
-      // message's id and usage snapshot — count each message id once (#157).
-      const seenIds = new Set<string>();
       const lines = content.split("\n");
       for (const line of lines) {
         if (!line?.includes("input_tokens")) continue;
@@ -190,13 +192,9 @@ export function readClaudeCodeUsage(
 
         const usage = parsed.message?.usage;
         if (!usage) continue;
-        const msgId = parsed.message?.id;
-        if (msgId) {
-          if (seenIds.has(msgId)) continue;
-          seenIds.add(msgId);
-        }
 
-        // Timestamp filtering.
+        // Timestamp filtering — before the id claim, so an out-of-range copy
+        // can't suppress an in-range one.
         if (parsed.timestamp) {
           const ts = new Date(parsed.timestamp).getTime() / 1000;
           if (since !== undefined && ts < since) continue;
@@ -209,6 +207,16 @@ export function readClaudeCodeUsage(
         const reasoning = usage.output_tokens_details?.thinking_tokens ?? 0;
         const cacheRead = usage.cache_read_input_tokens ?? 0;
         const cacheWrite = usage.cache_creation_input_tokens ?? 0;
+
+        // A copy with zero input/output/cache is a placeholder (a real call
+        // always has input); let it neither count nor claim the id, or it
+        // hides the full copy that carries the tokens.
+        if (input + output + cacheRead + cacheWrite === 0) continue;
+        const msgId = parsed.message?.id;
+        if (msgId) {
+          if (seenIds.has(msgId)) continue;
+          seenIds.add(msgId);
+        }
 
         // Only count the first usage line per file as a session.
         fileSessions++;
