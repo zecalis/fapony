@@ -94,7 +94,11 @@ Started fresh with no prior conversation? Nothing to harvest. Go to Phase 1.
 
 ## Phase 1 — One question
 
-Ask this, and nothing else:
+**Skip this phase when the Phase 0 harvest already answers it** — what the dev wants to do that
+they can't today. Say the one-sentence summary instead and go to Phase 1.5; asking again is the
+interrogation Phase 0 exists to avoid.
+
+Otherwise ask this, and nothing else:
 
 > "What do you want to be able to do that you can't do today? Short is fine — I'll draft the rest
 > and you correct me."
@@ -114,15 +118,23 @@ warns past ~300 files):
 
 ```bash
 fapony plan-seed <feature> --scope <path>          # add --spec when the plan will need one
+fapony plan-seed <feature> --scope <path> --ids 01M4GQVP   # pin fael rows the conversation started from
 ```
+
+Pass `--ids` for every fael row the conversation cited (the issue this plan answers, a decision it
+builds on): a row whose files sit outside the scope never matches on its own, and the row the plan
+started from is the one that most often does. A dir scope also pulls in its same-stem module file
+beside it (`--scope src/write` adds `src/write.rs`).
 
 Add `--spec` only when the plan will carry a schema, a contract, or an edge-case table — what §7
 must not hold; Phase 4 can still write the SPEC later. One command, no MCP round trip. It writes
 `<planDir>/PLAN-<feature>.md` (+ `<specDir>/SPEC-<feature>.md` with `--spec`) — the frontmatter,
 the 8 empty sections, and a `## Context (fapony)` block under the TL;DR (Known traps — open fael issues/decisions whose files
-are in scope — plus one line per scope file with its exports; needs `--scope` to list anything).
+are in scope, plus `--ids` rows — then one line per scope file with its exports; needs `--scope` to list anything).
+That block is a snapshot stamped with the seed date and HEAD — it goes stale as chunks land, so
+re-run `fapony review-seed --files` / `fael find --files` for the live view; never refresh it in place.
 No `status:` — omit = not started. Stdout flags open chunks of other plans that mention a scope
-file (path, basename or stem): that is a plan already doing this work — merge or order, don't
+file (path or basename anywhere, stem only inside a `code span`): that is a plan already doing this work — merge or order, don't
 draft a second one. SPEC chunks carry verbatim signatures, hard-capped (PLAN ≤ ~60 / SPEC ≤ 200
 lines), and capped lines say what was cut. Stdout ends with the existing plan list (active first,
 then shipped) — the seed that lands next to a shipped decision without knowing it is the
@@ -168,7 +180,7 @@ where you have to.
 §1 Home: <closest thing that exists + the command that found it> → extend it | new, because <it can't hold X>
 §1 Why now: <traceable evidence: who/what uses it, how often, measured when> | <damage it prevents> | <hypothesis it makes testable> | "no evidence yet"
 §3 ≥ 1 criterion runs on real input (a customer file, a live route) or is a case that must fail; a vendor contract cites the vendor's doc
-§6 Measurement (only with a measuring step): command showing the data exists today + its count · date it reaches N at today's rate · baseline taken before the change ships · no chunk here touches that data
+§6 Measurement (only with a measuring step): command showing the data exists today + its count · when it reaches N — the Nth event (run, PR, sample) at today's rate, a date only when the window is calendar-bound · baseline taken before the change ships · no chunk here touches that data
 ```
 
 **Home is a place in the code, not a person** — the table, derived value, route or module the plan
@@ -283,8 +295,9 @@ labels are prose — translate them freely, the checkbox tally doesn't care.
 Then — the part that must not be dropped — invite corrections in chat, in ~8 lines:
 
 - one line: what this plan does
-- **every `(Proposal)` and `(Threshold trial)` in the draft, one bullet each** — this list is what the dev actually corrects,
-  and it is the only reason the draft was ever shown in chat
+- **the 3–5 `(Proposal)` / `(Threshold trial)` lines that would change the chunk order or scope if wrong**, one
+  bullet each — this list is what the dev actually corrects, and a list of ten gets skimmed. The rest stay
+  labelled in the file; end the list with `+N more labelled in the file` so none is hidden
 - the file path, then: **"Tell me what's wrong with it"** — never "is this ok"
 
 > "Written to <planDir>/PLAN-<feature>.md. Proposed: <p1>, <p2>, <p3>. **Tell me what's wrong** —
@@ -332,8 +345,8 @@ Then draft `<specDir>/SPEC-<feature>.md` (same config lookup as Phase 2) by:
 Everything above is procedure. These three are the ones that break the plan when broken —
 the rest of this file states them where they apply:
 
-1. **Anything not Observed or decided is labelled `(Proposal)` / `(Threshold trial)` — and listed
-   back in chat** (Phase 3). The list is what the dev corrects; unlabelled invention is how a plan
+1. **Anything not Observed or decided is labelled `(Proposal)` / `(Threshold trial)` — and the
+   load-bearing ones listed back in chat, the rest counted** (Phase 3). The list is what the dev corrects; unlabelled invention is how a plan
    picks up requirements nobody asked for
 2. **What wasn't discussed or corrected = not in the plan** — a labelled Proposal the dev fixed or
    kept counts as discussed; silent additions never do

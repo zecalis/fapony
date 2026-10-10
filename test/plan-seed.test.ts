@@ -620,6 +620,7 @@ test("testPlanSeedFlagsOpenChunksTouchingScope", () => {
         "- [x] k5 — calc.ts rounding (closed, never reported)",
         "- [ ] k6 — check counterparty `party.verified_*`",
         "- [ ] k7 — rebuild the search index", // generic stem: no hit
+        "- [ ] k8 — the party is over", // stem in prose: no hit
         "",
         "## 6. Steps",
         "- [ ] calc.ts again (not the TL;DR: not a chunk)",
@@ -635,8 +636,33 @@ test("testPlanSeedFlagsOpenChunksTouchingScope", () => {
       );
       assert.ok(!out.includes("k5"), "ticked chunks are not reported");
       assert.ok(!out.includes("k7"), "generic stem `index` never matches");
+      assert.ok(
+        !out.includes("k8"),
+        "a stem outside a code span never matches",
+      );
       assert.ok(!out.includes("again"), "only TL;DR chunks count");
     });
   });
   console.log("  ✓ plan-seed flags open chunks of other plans on the scope");
+});
+
+// `--scope fael/src/write` used to miss fael/src/write.rs — the module file
+// beside the dir that held the entry point.
+test("testPlanSeedDirScopePullsSiblingModuleFile", () => {
+  withFixture((dir) => {
+    mkdirSync(join(dir, "src", "write"), { recursive: true });
+    writeFileSync(join(dir, "src", "write", "paths.rs"), "pub fn paths() {}\n");
+    writeFileSync(join(dir, "src", "write.rs"), "pub fn close_row() {}\n");
+    withCwd(dir, () => {
+      captureLogs(() => cmdPlanSeed(["sib", "--scope", "src/write"]));
+      const plan = readFileSync(
+        join(dir, ".fapony", "plan", "PLAN-sib.md"),
+        "utf-8",
+      );
+      assert.match(plan, /src\/write\.rs — close_row\(\)/);
+      assert.match(plan, /src\/write\/paths\.rs — paths\(\)/);
+      assert.match(plan, /_Snapshot at seed \(\d{4}-\d{2}-\d{2}/);
+    });
+  });
+  console.log("  ✓ plan-seed: a dir scope pulls in its sibling module file");
 });

@@ -62,7 +62,7 @@ Each step must be verifiable before moving to the next
 A step needing state the system doesn't store yet must say where it lives, who writes it, who reads it
 A measurement step states before it runs: the metric, the data set / window, the pass threshold, and
 what each outcome leads to — it closes with the result's fael decision `(fael:<id>)`, not a commit
-Measurement: <command showing the data exists today + its count> · <date it reaches N at today's rate> ·
+Measurement: <command showing the data exists today + its count> · <when it reaches N: the Nth event at today's rate, a date only if calendar-bound> ·
 <baseline taken before the change ships> · <no chunk here touches that data> — fail: a KPI nobody knows where to pull from
 
 ## 7. Examples (make it concrete)
