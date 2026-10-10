@@ -114,7 +114,8 @@ That is the entire question phase. Everything else comes out of the draft.
 
 If the `fapony` CLI is on PATH, run it **once** before drafting — with `--scope` when the dev's
 idea already points at a directory (repeatable; without it the seed scans the whole cwd and
-warns past ~300 files):
+warns past ~300 files). Run it from the dir that holds the app's `.fapony/` — it writes to
+`<cwd>/.fapony/`, not the nearest one up:
 
 ```bash
 fapony plan-seed <feature> --scope <path>          # add --spec when the plan will need one
@@ -210,13 +211,14 @@ came back empty.
 **Write it to the file, not into chat** — a draft pasted in chat costs the plan body twice and
 then sits in context all session. Corrections land as small edits instead of a re-draft.
 
-**Resolve where plans live first — never assume `.fapony/plan/`.** Read
-`<worktree>/fapony.config.json` for `paths.planDir` / `paths.specDir`, falling back to
-`.fapony/plan` / `.fapony/spec`. Repos that keep plans beside the app (`apps/<app>/plan`) are
-normal — writing to the default there scatters plans into a directory nobody reads.
+**Resolve where plans live first — never assume the repo root's `.fapony/plan/`.** Plans live in
+the app's own `.fapony/`: the nearest one walking up from the app dir, bounded by the git root
+(`<base>/plan`, `<base>/spec`, `<base>/done`). A monorepo keeps one per app (`apps/<app>/.fapony/`) —
+writing into the root's there scatters plans into a directory that app's `fapony plan` never reads.
+There is no `paths.planDir` / `paths.specDir`; only `paths.doneDir` is read from `fapony.config.json`.
 
-`ls <planDir>/` and check `PLAN-<feature>.md` doesn't already exist — check `paths.doneDir`
-(default `.fapony/done`) too, shipped plans live there. If it exists, don't overwrite: pick
+`ls <planDir>/` and check `PLAN-<feature>.md` doesn't already exist — check `<base>/done/` (or
+`paths.doneDir`) too, shipped plans live there. If it exists, don't overwrite: pick
 `PLAN-<feature>-v2.md` or ask which one is stale. (Phase 1.5's CLI refuses on its own; drafting
 by hand, this check is yours.)
 
@@ -345,7 +347,7 @@ Only if the dev asks, or the plan keeps trying to describe *how*:
 > the detail the plan links to instead of carrying. I can draft one from the plan if you'd rather
 > react than specify."
 
-Then draft `<specDir>/SPEC-<feature>.md` (same config lookup as Phase 2) by:
+Then draft `<specDir>/SPEC-<feature>.md` (same `.fapony/` as the plan, Phase 2) by:
 - If Phase 1.5 already created it (`--spec`), edit that one — its Chunk index + signatures are
   the live scan; add the dev-facing detail (edge cases, examples, fail examples) on top
 - Referencing sections from the plan directly — don't rewrite
