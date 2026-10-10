@@ -33,9 +33,9 @@ done: 1 archived
 ```
 
 In a real project these three directories are `.fapony/plan/`, `.fapony/done/` and
-`.fapony/spec/`, which is where `plan_list` looks by default — point `paths.planDir` /
-`paths.doneDir` / `paths.specDir` at them if your repo keeps plans somewhere else (`apps/<app>/plan`,
-say). Then ask your agent *"what's left, and what's blocked?"*.
+`.fapony/spec/` — the nearest `.fapony/` walking up from cwd, so a monorepo keeps one per app
+(`apps/<app>/.fapony/`); only done/ can move, via `paths.doneDir`. Then ask your agent *"what's left,
+and what's blocked?"*.
 
 The rules behind the format: [../templates/PLAN.md](../templates/PLAN.md) (plan) ·
 [../templates/SPEC.md](../templates/SPEC.md) (spec) ·
