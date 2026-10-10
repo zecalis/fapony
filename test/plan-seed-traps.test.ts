@@ -166,6 +166,31 @@ test("testKnownTrapsFallbackOnlyForEmptyFiles", () => {
   );
 });
 
+// The row a plan starts from often names files outside the scope — --ids pins
+// it ahead of the cap; an unknown id is reported, never silently dropped.
+test("testKnownTrapsPinnedIds", () => {
+  withFaelRepo((dir) => {
+    writeFixture(dir);
+    writeMemRow(dir, "01ORIGIN", "bug", "the reason for this plan", [
+      "lib/x.ts",
+    ]);
+    writeMemRow(dir, "n1", "note", "a pinned note", ["lib/y.ts"]);
+    writeMemRow(dir, "s1", "bug", "in scope", ["src/calc.ts"]);
+    const r = renderKnownTraps(dir, dir, [join(dir, "src")], true, [
+      "01ORI",
+      "n1",
+      "nope",
+    ]);
+    assert.equal(r.matched, 3);
+    assert.deepEqual(r.missing, ["nope"]);
+    assert.match(r.lines[2], /1 relevant row\(s\).* \+ 2 pinned \(--ids\)/);
+    assert.match(r.lines[3], /the reason for this plan \(01ORIGIN\)/);
+    assert.match(r.lines[4], /a pinned note/);
+    assert.match(r.lines[5], /in scope \(src\/calc\.ts\)/);
+  });
+  console.log("  ✓ known traps: --ids pins rows ahead of scope matches");
+});
+
 // --- e2e: traps land in the PLAN, never the SPEC ---
 
 test("testPlanSeedInjectsTrapsIntoPlan", () => {

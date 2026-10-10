@@ -1,4 +1,4 @@
-// src/seed/plan-seed.ts — `fapony plan-seed <name> [--spec] [--scope <path>[,<path>]]...`
+// src/seed/plan-seed.ts — `fapony plan-seed <name> [--spec] [--scope <path>[,<path>]]... [--ids <id>[,<id>]]`
 //
 // Writes PLAN + SPEC straight into planDir/specDir. What it pre-fills is the
 // structure (frontmatter, the 8 sections, ledger context) — the
@@ -135,10 +135,10 @@ function listExistingPlans(
 // plan already doing this work (PLAN-vela-checks k6 checked `party.verified_*`
 // while a second plan designed the same columns; PLAN-fael-file-hash chunk 4
 // touched push.rs). Both were found by hand-grep — this is that grep: the
-// unticked TL;DR lines of every other plan, against each scope file's path,
-// basename and stem.
-// ponytail: stem match is a word-boundary regex — a generic stem ("store",
-// "config") can false-hit; drop to basename-only if that shows up.
+// unticked TL;DR lines of every other plan, against each scope file's path
+// and basename anywhere, and its stem only inside a `code span` — a bare stem
+// is an English word too ("cited" pulled in PLAN-fael-learn-loop on prose
+// alone), while `party.verified_*` is the code-shaped hit the stem exists for.
 const GENERIC_STEMS = new Set([
   "index",
   "mod",
@@ -154,18 +154,19 @@ function openChunkOverlaps(
   roots: string[],
   exclude: string,
 ): string[] {
-  const names = new Set<string>();
+  const names = new Map<string, boolean>(); // name → code spans only
   for (const r of roots)
     for (const f of scopeSourceFiles(r)) {
       const base = basename(f);
       const stem = base.slice(0, base.lastIndexOf("."));
-      names.add(relative(cwd, f)).add(base);
-      if (!GENERIC_STEMS.has(stem)) names.add(stem);
+      names.set(relative(cwd, f), false).set(base, false);
+      if (!GENERIC_STEMS.has(stem) && !names.has(stem)) names.set(stem, true);
     }
   if (names.size === 0) return [];
   const esc = (n: string) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const res = [...names].map((n) => ({
+  const res = [...names].map(([n, codeOnly]) => ({
     n,
+    codeOnly,
     re: new RegExp(`(?<![\\w/-])${esc(n)}(?![\\w-])`),
   }));
   const dir = join(cwd, planDir());
@@ -178,7 +179,10 @@ function openChunkOverlaps(
   const out: string[] = [];
   for (const p of plans.sort())
     for (const chunk of firstSectionItems(join(dir, p)).unchecked) {
-      const all = res.filter((r) => r.re.test(chunk)).map((r) => r.n);
+      const code = (chunk.match(/`[^`]*`/g) ?? []).join(" ");
+      const all = res
+        .filter((r) => r.re.test(r.codeOnly ? code : chunk))
+        .map((r) => r.n);
       // `resolve.ts` already says `resolve` — keep the longest name per hit
       const hit = all.filter((h) => !all.some((o) => o !== h && o.includes(h)));
       if (hit.length === 0) continue;
@@ -238,6 +242,7 @@ function renderExistingInScope(
 
 function planTemplate(
   name: string,
+  stamp: string,
   traps: string[],
   existingScope: string[],
   specLink: string | null,
@@ -255,6 +260,8 @@ kind: unit
   - [ ] chunk 1 — (agent fills in)
 
 ## Context (fapony)
+_Snapshot at seed (${stamp}) — goes stale as the work lands; live: \`fapony review-seed --files <scope>\` · \`fael find --files <scope>\`_
+
 ${traps.length > 0 ? `${traps.join("\n")}\n` : ""}### Existing in scope
 ${existingScope.join("\n")}
 
@@ -546,6 +553,7 @@ const MAX_TRAP_ROWS = 5;
 
 interface TrapHit {
   row: {
+    id?: string;
     ts: string;
     kind: string;
     text: string;
@@ -562,16 +570,30 @@ export function renderKnownTraps(
   cwd: string,
   roots: string[],
   scoped: boolean,
-): { lines: string[]; matched: number; lacked: number } {
-  const empty = { lines: [], matched: 0, lacked: 0 };
+  ids: string[] = [],
+): { lines: string[]; matched: number; lacked: number; missing: string[] } {
+  const empty = { lines: [], matched: 0, lacked: 0, missing: ids };
   try {
     const { rows } = readFaelLog(worktree, undefined, true);
     if (rows.length === 0) return empty;
 
+    // --ids: the row a plan starts from often names other files (its fix
+    // lives elsewhere), so no scope match finds it — the agent pins it.
+    // Any kind, ahead of the cap. Prefix match: fael prints short ids.
+    const pinned: TrapHit[] = [];
+    const missing: string[] = [];
+    for (const id of ids) {
+      const row = rows.find((r) => r.kind !== "close" && r.id?.startsWith(id));
+      if (row) pinned.push({ row, file: null, viaText: false });
+      else missing.push(id);
+    }
+    const pinnedRows = new Set(pinned.map((h) => h.row));
+
     const scopeFiles = new Set<string>();
     for (const r of roots)
       for (const f of scopeSourceFiles(r)) scopeFiles.add(relative(cwd, f));
-    if (scopeFiles.size === 0) return empty;
+    if (scopeFiles.size === 0 && pinned.length === 0)
+      return { ...empty, missing };
     const scopeKeys = roots
       .map((r) => relative(cwd, r))
       .filter((k) => k !== "" && k !== ".");
@@ -579,6 +601,7 @@ export function renderKnownTraps(
     const hits: TrapHit[] = [];
     for (const row of rows) {
       if (row.kind !== "bug" && row.kind !== "decision") continue;
+      if (pinnedRows.has(row)) continue;
       const files = row.files ?? [];
       const inScope = files.find((f) => scopeFiles.has(f));
       if (inScope) {
@@ -593,7 +616,7 @@ export function renderKnownTraps(
         }
       }
     }
-    if (hits.length === 0) return empty;
+    if (hits.length === 0 && pinned.length === 0) return { ...empty, missing };
 
     // Stable sort: bug before decision, recency preserved inside each kind.
     hits.sort((a, b) =>
@@ -603,15 +626,15 @@ export function renderKnownTraps(
     const lines = [
       "### Known traps (fael)",
       "",
-      `- ${hits.length} relevant row(s) on this scope (${lacked} lacked files[]${lacked > 0 ? " — matched via text" : ""})`,
+      `- ${hits.length} relevant row(s) on this scope (${lacked} lacked files[]${lacked > 0 ? " — matched via text" : ""})${pinned.length > 0 ? ` + ${pinned.length} pinned (--ids)` : ""}`,
     ];
-    for (const h of hits.slice(0, MAX_TRAP_ROWS)) {
+    for (const h of [...pinned, ...hits.slice(0, MAX_TRAP_ROWS)]) {
       const text =
         h.row.text.length > MEM_TEXT_MAX
           ? `${h.row.text.slice(0, MEM_TEXT_MAX - 1)}…`
           : h.row.text;
       lines.push(
-        `- ${h.row.ts.slice(0, 10)} ${h.row.kind} — ${text}${h.file ? ` (${h.file})` : ""}`,
+        `- ${h.row.ts.slice(0, 10)} ${h.row.kind} — ${text}${h.file ? ` (${h.file})` : pinnedRows.has(h.row) ? ` (${h.row.id})` : ""}`,
       );
     }
     if (hits.length > MAX_TRAP_ROWS) {
@@ -619,7 +642,7 @@ export function renderKnownTraps(
         `- … +${hits.length - MAX_TRAP_ROWS} more at cap ${MAX_TRAP_ROWS} (bug first, then decision)`,
       );
     }
-    return { lines, matched: hits.length, lacked };
+    return { lines, matched: hits.length + pinned.length, lacked, missing };
   } catch {
     return empty; // no mem log / unreadable = a seed with no traps, never an error
   }
@@ -629,12 +652,13 @@ export function renderKnownTraps(
 
 export function cmdPlanSeed(args: string[]): void {
   const usage =
-    "usage: fapony plan-seed <name> [--spec] [--scope <path>[,<path>]]...";
+    "usage: fapony plan-seed <name> [--spec] [--scope <path>[,<path>]]... [--ids <id>[,<id>]]";
   // Positional parse, not args.find(!startsWith("--")) — a --scope VALUE is
   // a non-flag argument and must never be mistaken for the plan name.
   let name: string | undefined;
   let withSpec = false;
   const scopeArgs: string[] = [];
+  const ids: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--spec") {
@@ -660,6 +684,18 @@ export function cmdPlanSeed(args: string[]): void {
       }
       scopeArgs.push(...syms);
       i++;
+    } else if (a === "--ids") {
+      const v = args[i + 1];
+      const got = (v?.startsWith("--") ? "" : (v ?? ""))
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (got.length === 0) {
+        console.error(`plan-seed: --ids needs a fael id\n${usage}`);
+        process.exit(1);
+      }
+      ids.push(...got);
+      i++;
     } else if (a.startsWith("--")) {
       console.error(`plan-seed: unknown flag "${a}"\n${usage}`);
       process.exit(1);
@@ -679,6 +715,7 @@ export function cmdPlanSeed(args: string[]): void {
   // prints "(not enough graded history yet)".
   const root = execGit("git rev-parse --show-toplevel", cwd);
   const worktree = root.ok ? root.output.split("\n")[0] : cwd;
+  const head = execGit("git rev-parse --short HEAD", cwd);
 
   // Scope: explicit paths win; default is the cwd. Resolved absolutes,
   // deduped — the same path twice is one scope. Nested roots are pruned:
@@ -696,6 +733,16 @@ export function cmdPlanSeed(args: string[]): void {
     if (!existsSync(r)) {
       console.error(`plan-seed: scope not found: ${r}`);
       process.exit(1);
+    }
+  }
+  // A dir scope drops its module file: `--scope src/write` misses the
+  // `src/write.rs` (or `src/plan.ts`) that sits beside it and usually holds
+  // the entry point. Pull a same-stem sibling source file in.
+  for (const r of [...roots]) {
+    if (!statSync(r).isDirectory()) continue;
+    for (const ext of EXPORT_EXTS) {
+      const mod = `${r}${ext}`;
+      if (!roots.includes(mod) && existsSync(mod)) roots.push(mod);
     }
   }
   if (roots.length === 0) roots.push(resolve(cwd, "."));
@@ -729,7 +776,9 @@ export function cmdPlanSeed(args: string[]): void {
   const scoped = requested.length > 0;
   // Known traps live in the PLAN: the SPEC is the signature dump nobody
   // re-reads, and the one useful row of a vela seed sat there unseen.
-  const traps = renderKnownTraps(worktree, cwd, roots, scoped);
+  const traps = renderKnownTraps(worktree, cwd, roots, scoped, ids);
+  for (const id of traps.missing)
+    console.error(`plan-seed: --ids ${id}: no open fael row with that id`);
   // First pass at the block cap — the total-cap check below may shrink it.
   let existingScope = renderExistingInScope(
     roots,
@@ -765,7 +814,13 @@ export function cmdPlanSeed(args: string[]): void {
 
   mkdirSync(planDirAbs, { recursive: true });
   const buildPlan = (existing: string[]): string =>
-    planTemplate(name, traps.lines, existing, specLink);
+    planTemplate(
+      name,
+      `${new Date().toISOString().slice(0, 10)}${head.ok ? ` @ ${head.output.trim()}` : ""}`,
+      traps.lines,
+      existing,
+      specLink,
+    );
   let planBody = buildPlan(existingScope);
   // The ≤ ~60 contract predates the §4 block — shrink the block (never the
   // judgment sections) until the file fits. Each item is one line, so cutting

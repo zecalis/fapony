@@ -78,7 +78,7 @@ fapony/
     detect.ts           # runtime test runner detection (bun/npm/pnpm/yarn) from package.json + lockfile — test-only caller left (was the Stop hook)
     seed/               # seed commands — plan-seed + review-seed + shared primitives
       primitives.ts     # shared git helpers (execGit/gitOk/gitValue), capLines, SIG_MAX, SeedError
-      plan-seed.ts      # fapony plan-seed <name> [--spec] [--scope <path>[,<path>]]... — writes PLAN(+SPEC): frontmatter, 8 empty sections, Context (fapony: fael decisions + existing-in-scope), existing-plans stdout list; SPEC chunks hold signatures, hard caps PLAN ≤ ~60 / SPEC ≤ 200
+      plan-seed.ts      # fapony plan-seed <name> [--spec] [--scope <path>[,<path>]]... [--ids <id>[,<id>]] — writes PLAN(+SPEC): frontmatter, 8 empty sections, Context (fapony: fael decisions + existing-in-scope), existing-plans stdout list; SPEC chunks hold signatures, hard caps PLAN ≤ ~60 / SPEC ≤ 200
       review-seed.ts    # fapony review-seed [--staged|--commit|--range|--files|--plan] — read-only scope facts for a review (changed/importers/untested/signatures/cross-check)
     price/              # model pricing data — fetch + resolve
       fetch.ts          # fetchPricing() — HTTP fetch from upstream price table
