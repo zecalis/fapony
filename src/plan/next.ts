@@ -35,6 +35,7 @@ import {
   blockedByShort,
   checkTickedLine,
   chunkLabel,
+  collectDriftWarns,
   DROP_RE,
   FAEL_UNREADABLE,
   faelReadable,
@@ -66,7 +67,7 @@ export const chunkRules = (anchor: string): string[] => [
   "batching: one session = one branch = one squash-merged PR, one commit per chunk · add the next chunk only while the PR stays reviewable in one sitting, never past 3 · a chunk gets its own PR when it changes a DB schema/migration or persisted format, touches auth/permissions/security or money logic, changes a public API/CLI contract, or needs a design review · close each chunk fully (tick + handoff note + commit) before the next; stop at anything that needs a human decision · a session starts a fresh branch from origin/main — never push onto a branch whose PR already merged (`gh pr view --json state`) · PR title follows the repo's commit style (same shape as the step commits); the body names the plan and its chunks (`Plan: PLAN-x chunk 2–3`) · a chunk that must build on an unmerged branch is stacked (PR base = that branch; once it merges: `git rebase --onto origin/main <lower> <upper>`)",
   `parallel: starting a chunk, append \`(wip <branch>)\` to its TL;DR line — the plan dir is shared, so another worktree's \`fapony plan\` skips it at once · a chunk runs alongside another only when \`fapony plan\` lists it under "can run alongside" (its \`(after <n>)\` / \`(after —)\` is met) and shares no file with the chunk in progress · the planner writes \`(after …)\` on a chunk line only when it truly does not wait on the chunk before it · each parallel chunk: own worktree, own branch, own PR`,
   `changing the plan: a chunk too big for one PR is split in place — its line becomes flat siblings \`Na\`, \`Nb\` (same indent, no umbrella \`N\` line kept, no nested checkboxes) · a chunk that waits on a person or on data (a page approved, ≥30 samples logged) gets \`(wait <what>)\` — \`fapony plan\` stops offering it; drop the marker once it is done · what a closed chunk left undone is a new \`[ ]\` line, or \`fael add issue … --files <f>,${anchor}\` when it is not part of "Done when" — never prose inside the tick · work done outside the plan is not a chunk: \`fael add note … --files <f>,${anchor}\` so the next session sees it · re-scoping or re-ordering chunks is the dev's call — ask`,
-  `closing a step: tick TL;DR with sha and drop its \`(wip …)\` — the tick stays one line (\`label — what — sha (#N)\`; detail goes in the handoff note) · .fapony/ is gitignored, so a tick or \`(#N)\` edit is never committed (a repo that tracks .fapony/ pays a commit per edit: gitignore it) · a chunk with no commit (a measurement) cites \`(fael:<decision id>)\` instead, a dropped chunk is \`[~]\` + the decision saying why · \`git commit\` files only · \`fael add note "<what the next chunk must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff\` (one key per plan — fael supersedes the previous note; a chunk run in parallel with another open chunk of this plan, in another worktree, writes \`--key ${anchor}:chunk-<label>\` instead) · after \`gh pr create\`, append \`(#N)\` to that tick (a squash rewrites the sha, \`(#N)\` survives it)`,
+  `closing a step: tick TL;DR with sha and drop its \`(wip …)\` — the tick stays one line (\`label — what — sha (#N)\`; detail goes in the handoff note) · .fapony/ is gitignored, so a tick or \`(#N)\` edit is never committed (a repo that tracks .fapony/ pays a commit per edit: gitignore it) · a chunk with no commit (a measurement) cites \`(fael:<decision id>)\` instead, a dropped chunk is \`[~]\` with \`(fael:<decision id>)\` on that line, the decision saying why · \`git commit\` files only · \`fael add note "<what the next chunk must know>" --files <f1,f2>,${anchor} --key ${anchor}:handoff --supersedes <the id \`## handoff\` shows>\` (one key per plan — fael keeps both rows when it cannot tell which replaces which, so name it; a chunk run in parallel with another open chunk of this plan, in another worktree, writes \`--key ${anchor}:chunk-<label>\` instead) · after \`gh pr create\`, append \`(#N)\` to that tick (a squash rewrites the sha, \`(#N)\` survives it)`,
 ];
 
 /** First-section items with the `- [ ] ` / `- [x] ` / `- [~] ` marker cut
@@ -159,6 +160,21 @@ const currentBranch = (): string | null => {
   });
   const b = p.stdout.toString().trim();
   return p.exitCode === 0 && b && b !== "HEAD" ? b : null;
+};
+
+// Branches some worktree of this repo has checked out — a `(wip <branch>)`
+// naming none of them is a claim nobody holds. null = git said nothing.
+const liveBranches = (): Set<string> | null => {
+  const p = Bun.spawnSync(["git", "worktree", "list", "--porcelain"], {
+    cwd: root,
+    stderr: "ignore",
+  });
+  if (p.exitCode !== 0) return null;
+  return new Set(
+    [...p.stdout.toString().matchAll(/^branch refs\/heads\/(.+)$/gm)].map(
+      (m) => m[1],
+    ),
+  );
 };
 
 const clip = (s: string, max = TEXT_MAX): string => {
@@ -288,7 +304,8 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
   // `plan:x:chunk-<label>` picks that chunk as "next"; else the picker: the
   // first open chunk no other worktree claimed whose `(after …)` is met.
   const { ordered } = firstSectionItems(file);
-  const pick = pickChunks(ordered, currentBranch());
+  const branch = currentBranch();
+  const pick = pickChunks(ordered, branch, liveBranches());
   const openLines = ordered.filter(isOpen);
   const toAt = (i: number) => (i < 0 ? -1 : openLines.indexOf(ordered[i]));
   const at = blocked
@@ -310,6 +327,10 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
     if (at >= 0) console.log(`\n## next\n- [ ] ${unchecked[at]}`);
     else if (!blocked)
       console.log(`\n## next\n(none ready — ${noneReady(pick, ordered)})`);
+    for (const s of pick.stale)
+      console.log(
+        `⚠ chunk ${chunkLabel(ordered[s.at]) ?? "?"}: (wip ${s.branch}) — no worktree has ${s.branch} checked out (merged or abandoned?), so it holds nothing; taking it: replace it with (wip ${branch ?? "<branch>"})`,
+      );
     if (elsewhere.length) {
       console.log(`\n## in progress in another worktree`);
       for (const [i, w] of pick.wip.entries())
@@ -372,6 +393,10 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
       );
   }
   for (const w of tldrWarns(file)) console.log(`⚠ ${w}`);
+  // W1 only (a prose Status that says "not started" over a tick): with every
+  // chunk closed, W2 repeats the "ready to ship or archive" line above
+  if (unchecked.length)
+    for (const w of collectDriftWarns([file])) console.log(`⚠ ${w}`);
   for (const l of items.unknown)
     console.log(
       `⚠ unknown checkbox, not counted: ${clip(l)} — use [ ], [x] or [~] (dropped)`,
@@ -406,6 +431,18 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
     for (const r of handoffs)
       console.log(
         `- ${r.ts.slice(0, 10)} ${r.kind} [${r.id}] ${r.key} ${clip(r.text)}`,
+      );
+    // fael files a second note beside an open one it cannot match (`kept
+    // all`): both show here, each read as current (fael push-noise)
+    const dup = all
+      .filter((r) => r.key === handoffKey)
+      .sort((a, b) => b.ts.localeCompare(a.ts));
+    if (dup.length > 1)
+      console.log(
+        `⚠ ${dup.length} open rows under ${handoffKey} — one per plan; close the older:\n${dup
+          .slice(1)
+          .map((r) => `   fael close ${r.id} "superseded by ${dup[0].id}"`)
+          .join("\n")}`,
       );
     const rest = all.length - handoffs.length;
     if (rest)
@@ -451,6 +488,7 @@ function showAll(): void {
     );
   console.log(`# ${rel(planDir)}/ — ${active.length} active plan(s)`);
   const branch = currentBranch();
+  const live = liveBranches();
   for (const f of active) {
     const items = readPlanSectionItems(f);
     const { unchecked } = items;
@@ -458,7 +496,7 @@ function showAll(): void {
       `\n- ${basename(f)} — ${tally(items)}${items.unknown.length ? ` · ⚠ ${items.unknown.length} unknown checkbox(es)` : ""}${isHighPriority(f) ? " · priority:high" : ""}`,
     );
     const { ordered } = firstSectionItems(f);
-    const pick = pickChunks(ordered, branch);
+    const pick = pickChunks(ordered, branch, live);
     if (pick.wip.length)
       console.log(
         `  in progress elsewhere: ${pick.wip.map((w) => `${chunkLabel(ordered[w.at]) ?? "?"} (${w.branch})`).join(", ")}`,

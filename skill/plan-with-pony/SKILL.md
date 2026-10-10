@@ -174,14 +174,23 @@ where you have to.
 - `(Threshold trial)` — a bar set before measuring that the dev hasn't agreed to; `agreed` once they do
 - `(Decision <date>)` — only what the dev chose, never what you expect them to
 
+**A label only moves forward.** `(Proposal)` / `(Threshold trial)` becomes `(Decision <date>)` when
+the dev agrees, or `(Observed: …)` once measured, or leaves with its line when the line is cut.
+Never drop a label while rewriting text around it: `fapony plan` warns on open labels, and a
+silently dropped one is an unagreed line the warning no longer sees.
+
 **Four lines every draft carries — the dev corrects them; they are never questions:**
 
 ```
 §1 Home: <closest thing that exists + the command that found it> → extend it | new, because <it can't hold X>
 §1 Why now: <traceable evidence: who/what uses it, how often, measured when> | <damage it prevents> | <hypothesis it makes testable> | "no evidence yet"
 §3 ≥ 1 criterion runs on real input (a customer file, a live route) or is a case that must fail; a vendor contract cites the vendor's doc
-§6 Measurement (only with a measuring step): command showing the data exists today + its count · when it reaches N — the Nth event (run, PR, sample) at today's rate, a date only when the window is calendar-bound · baseline taken before the change ships · no chunk here touches that data
+§6 Measurement (only with a measuring step): command showing the data exists today + its count · when it reaches N — the Nth event (run, PR, sample) at today's rate, a date only when the window is calendar-bound · baseline taken before the change ships · no chunk here touches that data · held fixed: what both arms share when it compares two · diagnose | evaluate · does not show: <the claim this number cannot carry>
 ```
+
+`diagnose` finds a mechanism, and a handful of cases is enough for it: decide on what the mechanism
+did, never on a count of 4. `evaluate` proves an effect and needs the N above. `does not show` is
+written in the first draft, not left for a reviewer to point out (reach is not experience transfer).
 
 **Home is a place in the code, not a person** — the table, derived value, route or module the plan
 extends or creates (the dev owns every plan). Grade each line before handing the draft back:
@@ -191,7 +200,7 @@ extends or creates (the dev owns every plan). Grade each line before handing the
 | Home | a real table/route/module/symbol + the command that checked it (review-seed, grep), or `(Proposal)` when unchecked | `Home: this plan` · "the system already has X" with no source |
 | Why now | traceable evidence, or "no evidence yet" said plainly | "best practice" · "agents will use it" |
 | Done | ≥ 1 criterion on real input or a failing case | "implementation complete" · a grep for text |
-| Measurement | data source + counting command + today's count | a KPI nobody knows where to pull from |
+| Measurement | data source + counting command + today's count + what it does not show | a KPI nobody knows where to pull from · two arms with nothing held fixed |
 
 Before: "Show the outstanding balance on page X". After: `Home: outstanding is computed in 7 places
 (review-seed --callers outstanding) → fold into openBalances() first, page X reads it (Proposal)`.
@@ -307,6 +316,11 @@ Then — the part that must not be dropped — invite corrections in chat, in ~8
 Ask "what's wrong" and you get the real answer. Ask "is this ok" and you get "ok".
 
 Corrections come back as edits to the file — change the lines they named, don't rewrite the plan.
+
+**A review that spans several sections is still line edits.** Number its points, answer each in
+chat — accept / reject (why) / accept with a change — and wait for the dev on any reject. Then edit
+only the lines the accepted points touch, labels moving forward as above, and close with one line
+per point: `#3 → §6 Measurement (held fixed)`. A point with no line to land on is a new line, labelled.
 
 ### Then at most two follow-ups
 
