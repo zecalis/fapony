@@ -290,13 +290,25 @@ const afterWarns = (
     const base = `PLAN-${ref.split(":")[0].replace(/^plan-/, "")}.md`;
     return !dirs.some((d) => existsSync(join(d, base)));
   };
+  // a condition written inside the marker — (after 1, เฉพาะเมื่อ chunk 1 ไม่หยุด)
+  // — read as "waits on chunk เฉพาะเมื่อ": say it is prose, not a missing chunk
+  const labelShaped = new RegExp(`^(?:[\\w.-]+:)?${LABEL}$`, "i");
   return open.flatMap((l) => {
     const bad = (afterRefs(l) ?? []).filter(unmet);
-    return bad.length
-      ? [
-          `open chunk ${name(l)}: (after ${bad.join(", ")}) names no chunk of this plan and no plan — it is never offered\n   fix: another plan's chunk is <plan>:<label>, e.g. (after vela-jobs:j4)`,
-        ]
-      : [];
+    const prose = bad.filter((t) => !labelShaped.test(t));
+    const missing = bad.filter((t) => labelShaped.test(t));
+    return [
+      ...(prose.length
+        ? [
+            `open chunk ${name(l)}: (after …) holds chunk labels only — ${prose.map((t) => `"${t}"`).join(", ")} ${prose.length > 1 ? "are" : "is"} not one, so it is never offered\n   fix: put the condition outside the parens — (after 1) only if 1 says GO; a chunk the verdict rules out becomes [~]`,
+          ]
+        : []),
+      ...(missing.length
+        ? [
+            `open chunk ${name(l)}: (after ${missing.join(", ")}) names no chunk of this plan and no plan — it is never offered\n   fix: another plan's chunk is <plan>:<label>, e.g. (after vela-jobs:j4)`,
+          ]
+        : []),
+    ];
   });
 };
 
@@ -471,7 +483,6 @@ export const collectDriftWarns = (active: string[]): string[] => {
     const fm = parsePlanFrontmatter(f);
     // Skip plans whose frontmatter already says shipped/blocked/superseded or
     // is a tracker — these have their own handling elsewhere.
-    if (FM_SHIPPED.test("") && fm.status === "shipped") continue;
     if (fm.status === "blocked" || fm.status === "superseded") continue;
     if (fm.kind === "tracker") continue;
     // frontmatter status: shipped = already done
@@ -495,7 +506,7 @@ export const collectDriftWarns = (active: string[]): string[] => {
       const statusMatch = />\s*\*?\*?Status:?\*?\*?\s+(.+)/i.exec(head);
       const statusVal = statusMatch?.[1]?.replace(/\*\*/g, "").trim() ?? "?";
       warns.push(
-        `${relPath} — status header says "${statusVal}" but ${checked} chunk(s) are ticked\n   fix: update the header to 🚧 in-progress or ✅ shipped`,
+        `${relPath} — status header says "${statusVal}" but ${checked} chunk(s) are ticked\n   fix: drop the line — frontmatter \`status:\` and the ticks already say it — or update it`,
       );
     }
 

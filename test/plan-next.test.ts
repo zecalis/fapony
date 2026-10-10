@@ -295,6 +295,55 @@ test("testPlanHandoffKeyLeads", () => {
   );
 });
 
+// fael push-noise: a recovered log left two open plan:x:handoff notes, both
+// printed as current; a stale wip held chunk 1; a prose condition sat inside
+// (after …); the prose Status said "not started" over a ticked chunk
+test("testPlanBriefFlagsDuplicateHandoffStaleWipProseAfterAndStatusDrift", () => {
+  withFakeFael((setRows) =>
+    withTempRepo((dir) => {
+      const p = join(dir, ".fapony", "plan");
+      mkdirSync(p, { recursive: true });
+      writeFileSync(
+        join(p, "PLAN-x.md"),
+        `---\nkind: unit\n---\n\n# X\n\n> **Status:** not started\n\n## TL;DR\n- [x] chunk 1 — done (fael:d1)\n- [ ] chunk 2 — b (wip chore/merged-away)\n- [ ] chunk 3 — c (after 2, เฉพาะเมื่อ chunk 2 ไม่หยุด)\n`,
+      );
+      const h = (id: string, ts: string) => ({
+        id,
+        ts,
+        kind: "note",
+        text: `handoff ${id}`,
+        files: ["plan:x"],
+        key: "plan:x:handoff",
+      });
+      setRows([
+        h("old1", "2026-10-01T00:00:00Z"),
+        h("new1", "2026-10-09T00:00:00Z"),
+      ]);
+      const out = run(dir, ["PLAN-x"]);
+      assert.match(out, /## next\n- \[ \] chunk 2 — b/, out);
+      assert.match(
+        out,
+        /⚠ chunk 2: \(wip chore\/merged-away\) — no worktree has chore\/merged-away checked out/,
+      );
+      assert.match(
+        out,
+        /⚠ 2 open rows under plan:x:handoff — one per plan; close the older:\n {3}fael close old1 "superseded by new1"/,
+      );
+      assert.match(
+        out,
+        /open chunk 3: \(after …\) holds chunk labels only — "เฉพาะเมื่อ", "ไม่หยุด" are not one/,
+      );
+      assert.doesNotMatch(out, /names no chunk/);
+      assert.match(
+        out,
+        /status header says "not started" but 1 chunk\(s\) are ticked/,
+      );
+      assert.match(out, /\[~\]` with `\(fael:<decision id>\)` on that line/);
+      assert.match(out, /--supersedes <the id `## handoff` shows>/);
+    }),
+  );
+});
+
 test("testPlanNextChunkLeadsWhenTheLabelIsBold", () => {
   withFakeFael((setRows) =>
     withTempRepo((dir) => {

@@ -42,8 +42,8 @@ const HELP = `usage: fapony plan [<PLAN.md> [--rules] | --files <path>] | adopt 
                               plan/, done/ and parked/. No match or several → reported only
 
 close a chunk: tick it with its sha, commit, then
-  fael add note "<what chunk N+1 must know>" --files <f1>,plan:<name> --key plan:<name>:handoff
-  (<name> = PLAN-<name>.md, lowercase; one key per plan — fael supersedes the previous note)
+  fael add note "<what chunk N+1 must know>" --files <f1>,plan:<name> --key plan:<name>:handoff --supersedes <open handoff id>
+  (<name> = PLAN-<name>.md, lowercase; one key per plan — the full rules: fapony plan <PLAN> --rules)
 example: fapony plan .fapony/plan/PLAN-x.md`;
 
 export function cmdPlan(a: string[]): void {

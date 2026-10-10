@@ -40,6 +40,9 @@ export interface Picked {
   next: number;
   /** chunks another session claimed */
   wip: { at: number; branch: string }[];
+  /** claims whose branch no worktree has checked out — the session moved on
+   *  (merged, renamed, abandoned); the chunk is picked like an unclaimed one */
+  stale: { at: number; branch: string }[];
   /** chunks marked `(wait …)` — a person or data comes first, no session takes them */
   waiting: { at: number; why: string }[];
   /** ready chunks that may run in another worktree, with any shared files */
@@ -63,8 +66,14 @@ export const closedInPlan = (ref: string): boolean => {
   );
 };
 
-/** `items` = the TL;DR checkbox lines in order, `- [ ]`/`- [x]` kept. */
-export function pickChunks(items: string[], branch: string | null): Picked {
+/** `items` = the TL;DR checkbox lines in order, `- [ ]`/`- [x]` kept.
+ *  `live` = the branches some worktree has checked out; null = unknown, every
+ *  claim holds. */
+export function pickChunks(
+  items: string[],
+  branch: string | null,
+  live: Set<string> | null = null,
+): Picked {
   const open = (l: string) => /^\s*[-*]\s+\[\s\]/.test(l);
   const label = (l: string) => chunkLabel(l)?.toLowerCase() ?? null;
   const waits = (i: number): string[] => {
@@ -77,6 +86,7 @@ export function pickChunks(items: string[], branch: string | null): Picked {
   };
 
   const wip: Picked["wip"] = [];
+  const stale: Picked["stale"] = [];
   const waiting: Picked["waiting"] = [];
   const ready: number[] = [];
   let mine = -1;
@@ -85,8 +95,13 @@ export function pickChunks(items: string[], branch: string | null): Picked {
   items.forEach((l, i) => {
     if (!open(l)) return;
     const claim = WIP_RE.exec(l);
-    if (claim) {
-      const b = claim[1].trim();
+    const b = claim?.[1].trim() ?? "";
+    // a session that closed chunk 1 on a branch, merged it and went on in a
+    // new branch left `(wip <old>)` behind: the plan read "none ready" until
+    // the marker was deleted by hand (fael push-noise, #327)
+    if (claim && b && b !== branch && live && !live.has(b))
+      stale.push({ at: i, branch: b });
+    else if (claim) {
       // a claim with this session's branch (or none) is this session's chunk
       if (mine < 0 && (!b || b === branch)) mine = i;
       else wip.push({ at: i, branch: b || "?" });
@@ -109,6 +124,7 @@ export function pickChunks(items: string[], branch: string | null): Picked {
   return {
     next,
     wip,
+    stale,
     waiting,
     alongside: ready
       .filter((i) => i !== next)

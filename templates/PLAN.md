@@ -63,7 +63,9 @@ A step needing state the system doesn't store yet must say where it lives, who w
 A measurement step states before it runs: the metric, the data set / window, the pass threshold, and
 what each outcome leads to — it closes with the result's fael decision `(fael:<id>)`, not a commit
 Measurement: <command showing the data exists today + its count> · <when it reaches N: the Nth event at today's rate, a date only if calendar-bound> ·
-<baseline taken before the change ships> · <no chunk here touches that data> — fail: a KPI nobody knows where to pull from
+<baseline taken before the change ships> · <no chunk here touches that data> · <held fixed: what both arms share (input, sha, order) when it compares two> ·
+<diagnose | evaluate: a small n (a handful of cases) finds the mechanism and decides on it, never on a count> ·
+<does not show: the claim this number cannot carry> — fail: a KPI nobody knows where to pull from
 
 ## 7. Examples (make it concrete)
 bash examples: before / after — **link into spec/, don't paste it.**
@@ -82,10 +84,9 @@ anything longer belongs in the spec file, not here.
 - **`plan_list` counts the checkboxes in the first `##` section only** — whatever that section is
   called, so the tally works in any language, and a step list deeper in the file stays detail
   instead of becoming status.
-- **Closing a chunk leaves a handoff in fael** — tick it with its sha, commit, then
-  `fael add note "<what chunk N+1 must know>" --files <f>,plan:<feature> --key plan:<feature>:chunk-<N+1>`.
-  `plan:<feature>` (lowercase) is an anchor, not a path: the path moves when the plan is archived
-  into `done/`. `fapony plan PLAN-<feature>.md` lists these rows, the next chunk's first.
+- **Closing a chunk leaves a handoff in fael** — the exact commands are the closing rules
+  `fapony plan PLAN-<feature>.md --rules` prints (one copy, never restated here). `plan:<feature>`
+  (lowercase) is an anchor, not a path: the path moves when the plan is archived into `done/`.
 
 **Where files live:** `.fapony/plan/` live · `.fapony/done/` shipped (a sibling, so archiving is a
 plain `git mv` that keeps every relative link working) · `.fapony/spec/` the specs plans cite (a spec moves to `done/` with the last plan that cites it).

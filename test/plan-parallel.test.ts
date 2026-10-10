@@ -1,7 +1,8 @@
 import { test } from "bun:test";
 // test/plan-parallel.test.ts — one plan, several worktrees (src/plan/parallel.ts)
 import assert from "node:assert";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { MemRow } from "../src/fael.js";
 import { cmdPlanNext } from "../src/plan/next.js";
@@ -23,6 +24,7 @@ test("testPickChunksDefaultsToTheFirstOpenChunk", () => {
   assert.deepEqual(p, {
     next: 1,
     wip: [],
+    stale: [],
     waiting: [],
     alongside: [],
     waitsOn: [],
@@ -43,6 +45,23 @@ test("testPickChunksSkipsAnotherWorktreesClaim", () => {
   assert.deepEqual(other.alongside, [{ at: 4, shared: ["src/a.ts"] }]);
   // the claiming worktree keeps its own chunk as next
   assert.equal(pickChunks(items, "feat/two").next, 1);
+});
+
+// fael push-noise: chunk 1 closed on a branch that merged (#327), the session
+// went on in a new branch, and `(wip chore/old)` kept the plan at "none ready"
+test("testPickChunksDropsAClaimNoWorktreeHolds", () => {
+  const items = [
+    "- [ ] chunk 1 — a (wip chore/old)",
+    "- [ ] chunk 2 — b (wip feat/live)",
+    "- [ ] chunk 3 — c (after —)",
+  ];
+  const live = new Set(["feat/now", "feat/live"]);
+  const p = pickChunks(items, "feat/now", live);
+  assert.equal(p.next, 0, "the stale claim's chunk is offered again");
+  assert.deepEqual(p.stale, [{ at: 0, branch: "chore/old" }]);
+  assert.deepEqual(p.wip, [{ at: 1, branch: "feat/live" }]);
+  // git unreadable: every claim holds, as before
+  assert.equal(pickChunks(items, "feat/now").next, 2);
 });
 
 test("testPickChunksSaysWhatTheFirstOpenChunkWaitsOn", () => {
@@ -100,6 +119,7 @@ test("testAfterAnotherPlansChunkWaitsUntilThatPlanTicksIt", () => {
       const w = tldrWarns(x).join("\n");
       assert.match(w, /open chunk m4: \(after 7a\) names no chunk/);
       assert.match(w, /open chunk m5: \(after gone:j1\)/);
+      assert.doesNotMatch(w, /holds chunk labels only/);
       assert.doesNotMatch(w, /m3/);
     } finally {
       process.chdir(prev);
@@ -160,6 +180,9 @@ test("testPlanShowsClaimsAlongsideAndMisfiledHandoff", () => {
           files: ["src/a.ts"],
         },
       ]);
+      // feat/one is held by a real second worktree — a claim no worktree
+      // holds is stale and holds nothing
+      execSync(`git worktree add -q -b feat/one "${dir}-one"`, { cwd: dir });
       const prev = process.cwd();
       process.chdir(dir);
       try {
@@ -185,6 +208,7 @@ test("testPlanShowsClaimsAlongsideAndMisfiledHandoff", () => {
         );
       } finally {
         process.chdir(prev);
+        rmSync(`${dir}-one`, { recursive: true, force: true });
       }
     }),
   );
