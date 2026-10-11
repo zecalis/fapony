@@ -291,6 +291,14 @@ function showPlan(file: string, chunk: string | null, rules = false): void {
     if (why) console.log(`parked_because: ${blockedByShort(why)}`);
     return;
   }
+  // cut over to fael (its TL;DR is fael's read-only mirror): fael picks and closes
+  // the chunks — the md rules (tick, handoff note) would write every hand-off twice
+  if (/^\s*- chunks live in fael\b/m.test(readFileSync(file, "utf8"))) {
+    console.log(
+      `⚠ chunks live in fael (${tally(items)}) — no chunk is offered here. Pick: fael board · brief: fael chunk start <uid> · close: fael chunk done <uid> "<handoff>" (that text is the hand-off — no tick, no handoff note)`,
+    );
+    return;
+  }
   // blocked = a dependency stands in the way: no next, no rules — but spec,
   // open chunks and handoff stay, they are what unblocking needs
   const fm = parsePlanFrontmatter(file);
